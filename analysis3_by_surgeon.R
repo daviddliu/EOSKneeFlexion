@@ -17,7 +17,7 @@ source("utils/utils.R")
 EXCLUDE_PJK <- TRUE
 
 # Check if cache exists - if so, skip database loading
-cache_file <- "results/analysis3_significance_tracking_cache.rds"
+cache_file <- "results/analysis3_PCA_significance_tracking_cache.rds"
 if (file.exists(cache_file)) {
   cat("\n=== Cache found - skipping database load ===\n")
   load_database <- FALSE
@@ -311,7 +311,7 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
   )
 }
 
-# Function for Analysis 4: Confounder analysis (preop knee flexion adjusted for covariates)
+# Function for Analysis 4: PCA-based confounder analysis (preop knee flexion adjusted for PCA components)
 analysis4_by_surgeon <- function(data, surgeon_name) {
   # Calculate change in lordosis using 6-week data
   data$change_lordosis <- data$LAT6W_L1_S1 - data$LATpre_L1_S1
@@ -333,8 +333,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   }
   
   # Drop patients with missing data for confounder analysis
-  # A priori confounder set based on causal reasoning (same as Analysis 4):
-  # PI-LL mismatch, Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
+  # A priori confounder set: PI-LL mismatch, Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
   data_clean <- data %>%
     filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(preop_PI_LL) &
            !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
@@ -366,56 +365,140 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   pval1_kf <- summary1$coefficients[2, 4]
   r2_model1 <- summary1$r.squared
   
-  # Model 2: Multiple regression (adjusted for a priori confounders)
-  # A priori confounder set (same as Analysis 4): PI-LL, Lordosis L1-S1, L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
-  model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
-               LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
-  summary2 <- summary(model2)
+  # Prepare confounder variables for PCA
+  confounder_vars <- c("preop_PI_LL", "LATpre_L1_S1", "LATpre_L4_S1", "LATpre_T2_T12", 
+                       "LATpre_S1PT", "LATpre_SVA_C2_S1", "LATpre_T4_L1_PA")
+  X_confounders <- data_clean[, confounder_vars]
   
-  if (nrow(summary2$coefficients) < 2) {
-    cat(paste("Warning: Regression failed for surgeon", surgeon_name, "in Analysis 4, Model 2\n"))
-    return(list(surgeon = surgeon_name, n_cases = n_cases, pval_unadjusted = pval1_kf, pval_adjusted = NA, r2_adjusted = NA))
+  # Check if we have enough data for PCA (need at least as many observations as variables)
+  n_confounders <- length(confounder_vars)
+  if (n_cases < n_confounders) {
+    cat(paste("Warning: Insufficient data for PCA (n =", n_cases, "<", n_confounders, "variables) for surgeon", surgeon_name, "\n"))
+    cat(paste("  Falling back to original confounder model\n"))
+    # Fall back to original model
+    model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
+                 LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
+    summary2 <- summary(model2)
+    if (nrow(summary2$coefficients) < 2) {
+      return(list(surgeon = surgeon_name, n_cases = n_cases, pval_unadjusted = pval1_kf, pval_adjusted = NA, r2_adjusted = NA))
+    }
+    coef2_kf <- summary2$coefficients[2, 1]
+    pval2_kf <- summary2$coefficients[2, 4]
+    r2_model2 <- summary2$r.squared
+    covariates_model <- lm(change_lordosis ~ preop_PI_LL + LATpre_L1_S1 + 
+                           LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
+    data_clean$resid_from_covariates <- residuals(covariates_model)
+    r2_covariates_only <- summary(covariates_model)$r.squared
+    r2_kf_change <- r2_model2 - r2_covariates_only
+    t_stat_kf <- summary2$coefficients[2, 3]
+    df_residual <- summary2$df[2]
+    r_partial <- t_stat_kf / sqrt(t_stat_kf^2 + df_residual)
+    n_components_used <- "Original (insufficient data for PCA)"
+  } else {
+    # Perform PCA
+    X_scaled <- scale(X_confounders)
+    pca_result <- prcomp(X_scaled, center = FALSE, scale. = FALSE)
+    pca_components <- pca_result$x
+    pca_summary <- summary(pca_result)
+    variance_explained <- pca_summary$importance[2, ]
+    cumulative_variance <- pca_summary$importance[3, ]
+    eigenvalues <- pca_result$sdev^2
+    
+    # Determine number of components using BIC (similar to analysis5)
+    # For small sample sizes, limit to reasonable number
+    max_components_to_test <- min(7, n_cases - 2, length(cumulative_variance))  # Need at least 2 more observations than parameters
+    
+    if (max_components_to_test < 1) {
+      cat(paste("Warning: Insufficient data for PCA model (n =", n_cases, ") for surgeon", surgeon_name, "\n"))
+      return(list(surgeon = surgeon_name, n_cases = n_cases, pval_unadjusted = pval1_kf, pval_adjusted = NA, r2_adjusted = NA))
+    }
+    
+    # Calculate BIC for different numbers of components
+    ic_results <- data.frame(
+      N_Components = 1:max_components_to_test,
+      BIC = numeric(max_components_to_test),
+      Knee_Flexion_P = numeric(max_components_to_test)
+    )
+    
+    for (n_comp in 1:max_components_to_test) {
+      # Prepare data with n_comp components
+      data_temp <- data_clean
+      for (i in 1:n_comp) {
+        data_temp[[paste0("PC", i)]] <- pca_components[, i]
+      }
+      
+      # Fit model
+      pca_formula_temp <- as.formula(paste("change_lordosis ~ LATpre_LL_KneeAngle +", 
+                                           paste(paste0("PC", 1:n_comp), collapse = " + ")))
+      model_temp <- lm(pca_formula_temp, data = data_temp)
+      
+      ic_results$BIC[n_comp] <- BIC(model_temp)
+      ic_results$Knee_Flexion_P[n_comp] <- summary(model_temp)$coefficients[2, 4]
+    }
+    
+    # Use BIC optimal
+    optimal_bic_idx <- which.min(ic_results$BIC)
+    n_components_use <- ic_results$N_Components[optimal_bic_idx]
+    
+    # Prepare data with optimal number of components
+    for (i in 1:n_components_use) {
+      data_clean[[paste0("PC", i)]] <- pca_components[, i]
+    }
+    
+    # Model 2: Multiple regression with PCA components
+    pca_formula <- as.formula(paste("change_lordosis ~ LATpre_LL_KneeAngle +", 
+                                    paste(paste0("PC", 1:n_components_use), collapse = " + ")))
+    model2 <- lm(pca_formula, data = data_clean)
+    summary2 <- summary(model2)
+    
+    if (nrow(summary2$coefficients) < 2) {
+      cat(paste("Warning: Regression failed for surgeon", surgeon_name, "in Analysis 4, Model 2 (PCA)\n"))
+      return(list(surgeon = surgeon_name, n_cases = n_cases, pval_unadjusted = pval1_kf, pval_adjusted = NA, r2_adjusted = NA))
+    }
+    
+    coef2_kf <- summary2$coefficients[2, 1]
+    pval2_kf <- summary2$coefficients[2, 4]
+    r2_model2 <- summary2$r.squared
+    
+    # Calculate residuals from PCA covariates model (for plotting)
+    pca_formula_no_kf <- as.formula(paste("change_lordosis ~", 
+                                          paste(paste0("PC", 1:n_components_use), collapse = " + ")))
+    covariates_model <- lm(pca_formula_no_kf, data = data_clean)
+    data_clean$resid_from_covariates <- residuals(covariates_model)
+    
+    # Calculate R² change for knee flexion
+    r2_covariates_only <- summary(covariates_model)$r.squared
+    r2_kf_change <- r2_model2 - r2_covariates_only
+    
+    # Calculate partial correlation
+    t_stat_kf <- summary2$coefficients[2, 3]
+    df_residual <- summary2$df[2]
+    r_partial <- t_stat_kf / sqrt(t_stat_kf^2 + df_residual)
+    
+    n_components_used <- paste0(n_components_use, " PCs (", round(cumulative_variance[n_components_use] * 100, 1), "% variance)")
   }
-  
-  coef2_kf <- summary2$coefficients[2, 1]
-  pval2_kf <- summary2$coefficients[2, 4]
-  r2_model2 <- summary2$r.squared
-  
-  # Calculate residuals from covariates model (for plotting)
-  # A priori confounder set (same as Analysis 4): PI-LL, Lordosis L1-S1, L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
-  covariates_model <- lm(change_lordosis ~ preop_PI_LL + LATpre_L1_S1 + 
-                         LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
-  data_clean$resid_from_covariates <- residuals(covariates_model)
-  
-  # Calculate R² change for knee flexion (additional variance explained by knee flexion after controlling for confounders)
-  r2_covariates_only <- summary(covariates_model)$r.squared
-  r2_kf_change <- r2_model2 - r2_covariates_only
-  
-  # Calculate partial correlation
-  t_stat_kf <- summary2$coefficients[2, 3]
-  df_residual <- summary2$df[2]
-  r_partial <- t_stat_kf / sqrt(t_stat_kf^2 + df_residual)
   
   # Calculate zero-order correlation
   r_kf_lordosis <- cor(data_clean$LATpre_LL_KneeAngle, data_clean$change_lordosis, use = "complete.obs")
   
   # Print summary
-  cat(paste("  Analysis 4 - Unadjusted coefficient:", round(coef1_kf, 4), 
+  cat(paste("  Analysis 4 (PCA) - Unadjusted coefficient:", round(coef1_kf, 4), 
             "(p =", formatC(pval1_kf, format = "e", digits = 2), ")\n"))
-  cat(paste("  Analysis 4 - Adjusted coefficient:", round(coef2_kf, 4), 
+  cat(paste("  Analysis 4 (PCA) - Adjusted coefficient:", round(coef2_kf, 4), 
             "(p =", formatC(pval2_kf, format = "e", digits = 2), ")\n"))
-  cat(paste("  Analysis 4 - R² Model 1:", round(r2_model1, 3), 
+  cat(paste("  Analysis 4 (PCA) - R² Model 1:", round(r2_model1, 3), 
             "R² Model 2:", round(r2_model2, 3), "\n"))
+  cat(paste("  Analysis 4 (PCA) - Components used:", n_components_used, "\n"))
   
-  # Create plot: Residuals from covariates model vs Knee Flexion
+  # Create plot: Residuals from PCA covariates model vs Knee Flexion
   p <- ggplot(data_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_covariates)) +
     geom_point(alpha = 0.6) +
     geom_smooth(method = "lm", se = TRUE, color = "blue") +
     geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
     labs(
       x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
-      y = "Residuals from Covariates Model\n(Change in Lordosis after removing effects of covariates)",
-      title = paste0("Confounder Analysis (6-week follow-up)\nSurgeon: ", surgeon_name),
+      y = paste0("Residuals from PCA Covariates Model\n(Change in Lordosis after removing effects of ", n_components_used, ")"),
+      title = paste0("PCA-Based Confounder Analysis (6-week follow-up)\nSurgeon: ", surgeon_name),
       subtitle = paste0("Adjusted relationship (n = ", nrow(data_clean), ")")
     ) +
     theme_minimal() +
@@ -442,10 +525,10 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     dir.create("results/by_surgeon")
   }
   safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis4.png")
+  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis4_PCA.png")
   filepath <- file.path("results/by_surgeon", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
-  cat(paste("Saved Analysis 4 for surgeon", surgeon_name, "to", filepath, "\n"))
+  cat(paste("Saved Analysis 4 (PCA) for surgeon", surgeon_name, "to", filepath, "\n"))
   
   # Return information for tracking significance changes
   return(list(surgeon = surgeon_name, n_cases = n_cases, 
@@ -641,11 +724,11 @@ if (length(significance_tracking) > 0) {
     img_height <- max(14, img_height)  # Minimum 14 inches
     img_width <- 16  # Increased width for better visibility
     
-    png("results/analysis3_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
+    png("results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
     
     # Create title
-    title_text <- paste0("Adjusted p-values after including confounding covariates\nPreop knee flexion vs change in lordosis at 6 weeks (Surgeons with >=20 cases with available data)")
+    title_text <- paste0("Adjusted p-values after PCA-based confounder adjustment\nPreop knee flexion vs change in lordosis at 6 weeks (Surgeons with >=20 cases with available data)")
     
     title_grob <- textGrob(title_text, gp = gpar(fontsize = 10, fontface = "bold"),
                           x = 0.5, y = unit(1, "npc") - unit(0.2, "in"), just = "top")
@@ -752,7 +835,7 @@ if (length(significance_tracking) > 0) {
     
     dev.off()
     
-    cat("Saved formatted table image to results/analysis3_bonferroni_table.png\n")
+    cat("Saved formatted table image to results/analysis3_PCA_bonferroni_table.png\n")
   } else {
     cat("No surgeons with >= 20 cases and valid p-values found.\n")
   }
