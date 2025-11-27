@@ -29,18 +29,6 @@ if (EXCLUDE_LOW_VOLUME_SURGEONS) {
 # Calculate change in lordosis using 6-week data
 df$change_lordosis <- df$LAT6W_L1_S1 - df$LATpre_L1_S1
 
-# Find or calculate preop PI-LL mismatch
-if ("LATpre_PI_LL" %in% names(df)) {
-  df$preop_PI_LL <- df$LATpre_PI_LL
-  cat("Using LATpre_PI_LL as preoperative PI-LL mismatch\n")
-} else if ("PI" %in% names(df)) {
-  df$preop_PI_LL <- df$PI - df$LATpre_L1_S1
-  cat("Calculating preoperative PI-LL mismatch as PI - LATpre_L1_S1\n")
-} else {
-  df$preop_PI_LL <- df$LAT6W_PI_LL
-  cat("WARNING: Using 6-week postoperative PI-LL as proxy for preoperative PI-LL\n")
-}
-
 # Calculate T4-L1 PA
 if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
   df$LATpre_T4_L1_PA <- df$LATpre_L1PA - df$LATpre_T4PA
@@ -50,12 +38,38 @@ if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
   df$LATpre_T4_L1_PA <- NA
 }
 
+# Check for age variable (prioritize demo_Age)
+age_var <- NULL
+if ("demo_Age" %in% names(df)) {
+  age_var <- "demo_Age"
+  cat("Using demo_Age as age variable\n")
+} else if ("demo_age" %in% names(df)) {
+  age_var <- "demo_age"
+  cat("Using demo_age as age variable\n")
+} else if ("age" %in% names(df)) {
+  age_var <- "age"
+  cat("Using age as age variable\n")
+} else if ("Age" %in% names(df)) {
+  age_var <- "Age"
+  cat("Using Age as age variable\n")
+} else {
+  cat("WARNING: Age variable not found. Will exclude from PCA.\n")
+}
+
 # Drop patients with missing data for confounder analysis
-# Confounder set: PI-LL mismatch, Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
-df_clean <- df %>%
-  filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(preop_PI_LL) &
-         !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-         !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+# Confounder set: S1PI (preop), Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA, Age
+if (!is.null(age_var)) {
+  df_clean <- df %>%
+    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(LATpre_S1PI) &
+           !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
+           !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) & 
+           !is.na(.data[[age_var]]))
+} else {
+  df_clean <- df %>%
+    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(LATpre_S1PI) &
+           !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
+           !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+}
 
 cat(paste("\n=== PCA-Based Confounder Analysis ===\n"))
 cat(paste("Sample size:", nrow(df_clean), "patients with complete data (using 6-week follow-up)\n\n"))
@@ -67,7 +81,7 @@ cat("=== STEP 1: Preparing Confounder Variables for PCA ===\n\n")
 
 # Select confounder variables (excluding knee flexion and outcome)
 confounder_vars <- c(
-  "preop_PI_LL",
+  "LATpre_S1PI",
   "LATpre_L1_S1",
   "LATpre_L4_S1",
   "LATpre_T2_T12",
@@ -77,7 +91,7 @@ confounder_vars <- c(
 )
 
 confounder_labels <- c(
-  "PI-LL Mismatch",
+  "S1PI (preop)",
   "Lordosis L1-S1",
   "Lordosis L4-S1",
   "Thoracic Kyphosis T2-T12",
@@ -85,6 +99,12 @@ confounder_labels <- c(
   "SVA",
   "T4-L1 PA"
 )
+
+# Add age if available
+if (!is.null(age_var)) {
+  confounder_vars <- c(confounder_vars, age_var)
+  confounder_labels <- c(confounder_labels, "Age")
+}
 
 X_confounders <- df_clean[, confounder_vars]
 colnames(X_confounders) <- confounder_labels
@@ -393,9 +413,16 @@ cat(sprintf("  Adjusted R²: %.4f\n\n", summary1$adj.r.squared))
 
 # Model 2: Multiple regression with original confounders (for comparison)
 cat("Model 2: Multiple Regression with Original Confounders\n")
-model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
-             LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, 
-             data = df_pca)
+if (!is.null(age_var)) {
+  formula_str <- paste("change_lordosis ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 +",
+                       "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
+                       "LATpre_T4_L1_PA +", age_var)
+  model2 <- lm(as.formula(formula_str), data = df_pca)
+} else {
+  model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 + 
+               LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, 
+               data = df_pca)
+}
 summary2 <- summary(model2)
 cat(sprintf("  Knee Flexion coefficient: %.4f (p = %.4e)\n", 
             summary2$coefficients[2, 1], summary2$coefficients[2, 4]))

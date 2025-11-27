@@ -316,15 +316,6 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   # Calculate change in lordosis using 6-week data
   data$change_lordosis <- data$LAT6W_L1_S1 - data$LATpre_L1_S1
   
-  # Set up preoperative PI-LL mismatch
-  if ("LATpre_PI_LL" %in% names(data)) {
-    data$preop_PI_LL <- data$LATpre_PI_LL
-  } else if ("PI" %in% names(data)) {
-    data$preop_PI_LL <- data$PI - data$LATpre_L1_S1
-  } else {
-    data$preop_PI_LL <- data$LAT6W_PI_LL  # Use 6-week postop as proxy
-  }
-  
   # Calculate T4-L1 PA
   if ("LATpre_L1PA" %in% names(data) && "LATpre_T4PA" %in% names(data)) {
     data$LATpre_T4_L1_PA <- data$LATpre_L1PA - data$LATpre_T4PA
@@ -332,12 +323,32 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     data$LATpre_T4_L1_PA <- NA
   }
   
+  # Check for age variable (prioritize demo_Age)
+  age_var <- NULL
+  if ("demo_Age" %in% names(data)) {
+    age_var <- "demo_Age"
+  } else if ("demo_age" %in% names(data)) {
+    age_var <- "demo_age"
+  } else if ("age" %in% names(data)) {
+    age_var <- "age"
+  } else if ("Age" %in% names(data)) {
+    age_var <- "Age"
+  }
+  
   # Drop patients with missing data for confounder analysis
-  # A priori confounder set: PI-LL mismatch, Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
-  data_clean <- data %>%
-    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(preop_PI_LL) &
-           !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-           !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+  # Confounder set: S1PI (preop), Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA, Age
+  if (!is.null(age_var)) {
+    data_clean <- data %>%
+      filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(LATpre_S1PI) &
+             !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
+             !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) & 
+             !is.na(.data[[age_var]]))
+  } else {
+    data_clean <- data %>%
+      filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis) & !is.na(LATpre_S1PI) &
+             !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
+             !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+  }
   
   n_cases <- nrow(data_clean)
   
@@ -366,8 +377,14 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   r2_model1 <- summary1$r.squared
   
   # Prepare confounder variables for PCA
-  confounder_vars <- c("preop_PI_LL", "LATpre_L1_S1", "LATpre_L4_S1", "LATpre_T2_T12", 
+  confounder_vars <- c("LATpre_S1PI", "LATpre_L1_S1", "LATpre_L4_S1", "LATpre_T2_T12", 
                        "LATpre_S1PT", "LATpre_SVA_C2_S1", "LATpre_T4_L1_PA")
+  
+  # Add age if available
+  if (!is.null(age_var)) {
+    confounder_vars <- c(confounder_vars, age_var)
+  }
+  
   X_confounders <- data_clean[, confounder_vars]
   
   # Check if we have enough data for PCA (need at least as many observations as variables)
@@ -376,8 +393,21 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     cat(paste("Warning: Insufficient data for PCA (n =", n_cases, "<", n_confounders, "variables) for surgeon", surgeon_name, "\n"))
     cat(paste("  Falling back to original confounder model\n"))
     # Fall back to original model
-    model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
-                 LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
+    if (!is.null(age_var)) {
+      formula_str <- paste("change_lordosis ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 +",
+                          "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
+                          "LATpre_T4_L1_PA +", age_var)
+      model2 <- lm(as.formula(formula_str), data = data_clean)
+      covariates_formula_str <- paste("change_lordosis ~ LATpre_S1PI + LATpre_L1_S1 +",
+                                       "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
+                                       "LATpre_T4_L1_PA +", age_var)
+      covariates_model <- lm(as.formula(covariates_formula_str), data = data_clean)
+    } else {
+      model2 <- lm(change_lordosis ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 + 
+                   LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
+      covariates_model <- lm(change_lordosis ~ LATpre_S1PI + LATpre_L1_S1 + 
+                             LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
+    }
     summary2 <- summary(model2)
     if (nrow(summary2$coefficients) < 2) {
       return(list(surgeon = surgeon_name, n_cases = n_cases, pval_unadjusted = pval1_kf, pval_adjusted = NA, r2_adjusted = NA))
@@ -385,8 +415,6 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     coef2_kf <- summary2$coefficients[2, 1]
     pval2_kf <- summary2$coefficients[2, 4]
     r2_model2 <- summary2$r.squared
-    covariates_model <- lm(change_lordosis ~ preop_PI_LL + LATpre_L1_S1 + 
-                           LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
     data_clean$resid_from_covariates <- residuals(covariates_model)
     r2_covariates_only <- summary(covariates_model)$r.squared
     r2_kf_change <- r2_model2 - r2_covariates_only
@@ -406,7 +434,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     
     # Determine number of components using BIC (similar to analysis5)
     # For small sample sizes, limit to reasonable number
-    max_components_to_test <- min(7, n_cases - 2, length(cumulative_variance))  # Need at least 2 more observations than parameters
+    max_components_to_test <- min(n_confounders, n_cases - 2, length(cumulative_variance))  # Need at least 2 more observations than parameters
     
     if (max_components_to_test < 1) {
       cat(paste("Warning: Insufficient data for PCA model (n =", n_cases, ") for surgeon", surgeon_name, "\n"))
