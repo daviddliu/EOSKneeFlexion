@@ -19,7 +19,7 @@ EXCLUDE_PJK <- TRUE
 EXCLUDE_LOW_VOLUME_SURGEONS <- FALSE
 
 # Load database
-db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective projects/Databases/CADS database - 2025.10.10.xlsx"
+db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
 
 # Filter out low-volume surgeons if enabled

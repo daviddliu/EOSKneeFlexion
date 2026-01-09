@@ -15,7 +15,7 @@ source("utils/utils.R")
 EXCLUDE_PJK <- TRUE
 
 # Load database
-db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective projects/Databases/CADS database - 2025.10.10.xlsx"
+db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
 
 # Filter patients with satisfactory PI-LL mismatch (between -10 and 10)

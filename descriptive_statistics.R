@@ -16,7 +16,7 @@ source("utils/utils.R")
 EXCLUDE_PJK <- TRUE
 
 # Load database
-db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective projects/Databases/CADS database - 2025.10.10.xlsx"
+db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
 cat("\n")
 
@@ -86,7 +86,7 @@ cat(sprintf("  Patients with PI-LL < 10: %d (%.1f%% of total, %.1f%% of those wi
 cat("\n")
 
 # Clean up temporary variables
-df$change_lordosis_temp <- NULL
+df$change_lordoIsis_temp <- NULL
 df$change_knee_temp <- NULL
 
 cat("=== End of Data Availability Statistics ===\n\n")

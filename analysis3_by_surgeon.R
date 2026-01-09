@@ -28,7 +28,7 @@ if (file.exists(cache_file)) {
 
 if (load_database) {
   # Load database
-  db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective projects/Databases/CADS database - 2025.10.10.xlsx"
+  db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
   df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
 
   # Impute missing surgeon by randomly assigning to other surgeons at the same site
@@ -638,69 +638,123 @@ if (length(significance_tracking) > 0) {
   
   # Calculate multiple comparisons correction
   n_surgeons <- nrow(surgeons_gt20)
+  
+  # Configuration: P-value adjustment method for multiple comparisons
+  # Options: "bonferroni", "fdr" (Benjamini-Hochberg), "holm", "hochberg", "hommel", "BY" (Benjamini-Yekutieli), "none"
+  # FDR/BH is less conservative than Bonferroni
+  P_VALUE_ADJUSTMENT_METHOD <- "fdr"  # Change to "bonferroni" for more conservative, "fdr" for less conservative
+  
   if (n_surgeons > 0) {
     cat(sprintf("\nSignificance Change Analysis:\n"))
     cat(sprintf("  Number of comparisons: %d\n", n_surgeons))
-    cat(sprintf("  Alpha level: 0.05\n\n"))
+    cat(sprintf("  Alpha level: 0.05\n"))
+    cat(sprintf("  Multiple comparisons adjustment: %s\n\n", P_VALUE_ADJUSTMENT_METHOD))
+    
+    # Apply p-value adjustment to the adjusted p-values (from multivariate model)
+    if (P_VALUE_ADJUSTMENT_METHOD != "none") {
+      surgeons_gt20$pval_adjusted_mc <- p.adjust(surgeons_gt20$pval_adjusted, method = P_VALUE_ADJUSTMENT_METHOD)
+      cat(sprintf("Applied %s correction to adjusted p-values\n", P_VALUE_ADJUSTMENT_METHOD))
+      cat("  (Adjusted p-values are from multivariate model, then corrected for multiple comparisons)\n\n")
+    } else {
+      surgeons_gt20$pval_adjusted_mc <- surgeons_gt20$pval_adjusted
+      cat("No multiple comparisons adjustment applied\n\n")
+    }
+    
+    # Print FDR/BH p-value for Justin Smith
+    smith_justin <- surgeons_gt20 %>% 
+      filter(grepl("Smith.*Justin|Justin.*Smith", surgeon, ignore.case = TRUE))
+    
+    if (nrow(smith_justin) > 0) {
+      cat("=== FDR/BH P-value for Justin Smith ===\n")
+      for (i in seq_len(nrow(smith_justin))) {
+        cat(sprintf("Surgeon: %s\n", smith_justin$surgeon[i]))
+        cat(sprintf("  Unadjusted p: %.6f\n", smith_justin$pval_unadjusted[i]))
+        cat(sprintf("  Adjusted p (multivariate): %.6f\n", smith_justin$pval_adjusted[i]))
+        cat(sprintf("  FDR/BH adjusted p: %.6f\n", smith_justin$pval_adjusted_mc[i]))
+        cat(sprintf("  n = %d\n", smith_justin$n_cases[i]))
+        cat("\n")
+      }
+    } else {
+      cat("=== Justin Smith not found in surgeons with >= 20 cases ===\n")
+      cat("Searching all surgeons...\n")
+      # Check all surgeons, not just >= 20
+      all_smith <- tracking_df %>% 
+        filter(grepl("Smith.*Justin|Justin.*Smith", surgeon, ignore.case = TRUE))
+      if (nrow(all_smith) > 0) {
+        # Apply FDR to all surgeons
+        all_smith$pval_adjusted_mc <- p.adjust(all_smith$pval_adjusted, method = P_VALUE_ADJUSTMENT_METHOD)
+        for (i in seq_len(nrow(all_smith))) {
+          cat(sprintf("Surgeon: %s\n", all_smith$surgeon[i]))
+          cat(sprintf("  Unadjusted p: %.6f\n", all_smith$pval_unadjusted[i]))
+          cat(sprintf("  Adjusted p (multivariate): %.6f\n", all_smith$pval_adjusted[i]))
+          cat(sprintf("  FDR/BH adjusted p: %.6f\n", all_smith$pval_adjusted_mc[i]))
+          cat(sprintf("  n = %d\n", all_smith$n_cases[i]))
+          cat("\n")
+        }
+      } else {
+        cat("Justin Smith not found in any surgeon results.\n\n")
+      }
+    }
   }
   
   if (nrow(surgeons_gt20) > 0) {
     # Categorize surgeons by significance change pattern
-    # Compare unadjusted vs adjusted p-values (from multivariate model)
+    # Use multiple comparisons adjusted p-values for categorization
+    # Compare unadjusted vs multiple-comparisons-adjusted p-values
     stayed_sig <- surgeons_gt20 %>%
-      filter(pval_unadjusted < 0.05 & pval_adjusted < 0.05)
+      filter(pval_unadjusted < 0.05 & pval_adjusted_mc < 0.05)
     
     stayed_nonsig <- surgeons_gt20 %>%
-      filter(pval_unadjusted >= 0.05 & pval_adjusted >= 0.05)
+      filter(pval_unadjusted >= 0.05 & pval_adjusted_mc >= 0.05)
     
     changed_to_nonsig <- surgeons_gt20 %>%
-      filter(pval_unadjusted < 0.05 & pval_adjusted >= 0.05)
+      filter(pval_unadjusted < 0.05 & pval_adjusted_mc >= 0.05)
     
     changed_to_sig <- surgeons_gt20 %>%
-      filter(pval_unadjusted >= 0.05 & pval_adjusted < 0.05)
+      filter(pval_unadjusted >= 0.05 & pval_adjusted_mc < 0.05)
     
-    # Print results for each category
-    cat("1. Stayed Significant (both unadjusted and adjusted p < 0.05):", nrow(stayed_sig), "\n")
+    # Print results for each category (using multiple comparisons adjusted p-values)
+    cat("1. Stayed Significant (both unadjusted and MC-adjusted p < 0.05):", nrow(stayed_sig), "\n")
     if (nrow(stayed_sig) > 0) {
       for (i in seq_len(nrow(stayed_sig))) {
-        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, adjusted p = %.4e\n",
+        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, MC-adjusted p = %.4e\n",
                     stayed_sig$surgeon[i],
                     stayed_sig$n_cases[i],
                     stayed_sig$pval_unadjusted[i],
-                    stayed_sig$pval_adjusted[i]))
+                    stayed_sig$pval_adjusted_mc[i]))
       }
     }
     
-    cat("\n2. Stayed Non-Significant (both unadjusted and adjusted p >= 0.05):", nrow(stayed_nonsig), "\n")
+    cat("\n2. Stayed Non-Significant (both unadjusted and MC-adjusted p >= 0.05):", nrow(stayed_nonsig), "\n")
     if (nrow(stayed_nonsig) > 0) {
       for (i in seq_len(nrow(stayed_nonsig))) {
-        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, adjusted p = %.4e\n",
+        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, MC-adjusted p = %.4e\n",
                     stayed_nonsig$surgeon[i],
                     stayed_nonsig$n_cases[i],
                     stayed_nonsig$pval_unadjusted[i],
-                    stayed_nonsig$pval_adjusted[i]))
+                    stayed_nonsig$pval_adjusted_mc[i]))
       }
     }
     
-    cat("\n3. Changed from Significant to Non-Significant (unadjusted p < 0.05, adjusted p >= 0.05):", nrow(changed_to_nonsig), "\n")
+    cat("\n3. Changed from Significant to Non-Significant (unadjusted p < 0.05, MC-adjusted p >= 0.05):", nrow(changed_to_nonsig), "\n")
     if (nrow(changed_to_nonsig) > 0) {
       for (i in seq_len(nrow(changed_to_nonsig))) {
-        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, adjusted p = %.4e\n",
+        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, MC-adjusted p = %.4e\n",
                     changed_to_nonsig$surgeon[i],
                     changed_to_nonsig$n_cases[i],
                     changed_to_nonsig$pval_unadjusted[i],
-                    changed_to_nonsig$pval_adjusted[i]))
+                    changed_to_nonsig$pval_adjusted_mc[i]))
       }
     }
     
-    cat("\n4. Changed from Non-Significant to Significant (unadjusted p >= 0.05, adjusted p < 0.05):", nrow(changed_to_sig), "\n")
+    cat("\n4. Changed from Non-Significant to Significant (unadjusted p >= 0.05, MC-adjusted p < 0.05):", nrow(changed_to_sig), "\n")
     if (nrow(changed_to_sig) > 0) {
       for (i in seq_len(nrow(changed_to_sig))) {
-        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, adjusted p = %.4e\n",
+        cat(sprintf("   - %s: n = %d, unadjusted p = %.4e, MC-adjusted p = %.4e\n",
                     changed_to_sig$surgeon[i],
                     changed_to_sig$n_cases[i],
                     changed_to_sig$pval_unadjusted[i],
-                    changed_to_sig$pval_adjusted[i]))
+                    changed_to_sig$pval_adjusted_mc[i]))
       }
     }
     
@@ -776,11 +830,11 @@ if (length(significance_tracking) > 0) {
           check.names = FALSE
         )
       } else {
-        # Format the data - use adjusted p-values from multivariate model
+        # Format the data - use multiple comparisons adjusted p-values
         table_data <- category_df %>%
           mutate(
             pval_unadjusted_fmt = sapply(pval_unadjusted, format_pval),
-            pval_adjusted_fmt = sapply(pval_adjusted, format_pval),
+            pval_adjusted_fmt = sapply(pval_adjusted_mc, format_pval),  # Use MC-adjusted p-values
             r2_adjusted_fmt = ifelse(is.na(r2_adjusted), "", sprintf("%.3f", r2_adjusted))
           ) %>%
           select(surgeon, n_cases, pval_unadjusted_fmt, pval_adjusted_fmt, r2_adjusted_fmt) %>%
