@@ -772,39 +772,42 @@ if (length(significance_tracking) > 0) {
       }
     }
     
-    # Prepare data for each category
+    # Prepare data for unified table
     if (!dir.exists("results")) {
       dir.create("results")
     }
     
-    # Calculate total rows for height calculation
-    # For empty categories, count as 1 row (for "None")
-    total_rows <- sum(
-      max(1, nrow(stayed_sig)), 
-      max(1, nrow(stayed_nonsig)), 
-      max(1, nrow(changed_to_nonsig)), 
-      max(1, nrow(changed_to_sig))
-    )
-    # Calculate height: title + subheadings + tables + margins
+    # Combine all surgeons into one table and anonymize
+    # Sort by unadjusted p-value (lowest to highest) for consistent anonymization
+    surgeons_gt20_sorted <- surgeons_gt20 %>%
+      arrange(pval_unadjusted) %>%
+      mutate(
+        surgeon_anon = paste0("Surgeon ", row_number()),
+        pval_unadjusted_fmt = sapply(pval_unadjusted, format_pval),
+        pval_adjusted_fmt = sapply(pval_adjusted, format_pval),
+        pval_bh_fmt = sapply(pval_adjusted_mc, format_pval),
+        r2_adjusted_fmt = ifelse(is.na(r2_adjusted), "", sprintf("%.3f", r2_adjusted))
+      ) %>%
+      select(surgeon_anon, n_cases, pval_unadjusted_fmt, pval_adjusted_fmt, pval_bh_fmt, r2_adjusted_fmt) %>%
+      rename(
+        "Surgeon" = surgeon_anon,
+        "n" = n_cases,
+        "Unadjusted p" = pval_unadjusted_fmt,
+        "Adjusted p" = pval_adjusted_fmt,
+        "BH-corrected p" = pval_bh_fmt,
+        "R² adjusted (KF)" = r2_adjusted_fmt
+      )
+    
+    # Calculate image dimensions
+    n_rows <- nrow(surgeons_gt20_sorted)
     title_height <- 0.6
-    subheading_height <- 0.25  # Per subheading
-    header_height <- 0.3  # Per table header
-    row_height <- 0.2  # Per data row
-    spacing <- 0.15  # Between sections
-    margin <- 0.4  # Bottom margin
+    header_height <- 0.3
+    row_height <- 0.2
+    margin <- 0.4
     
-    # Always show all 4 categories
-    n_subheadings <- 4
-    n_tables <- 4
-    
-    img_height <- title_height + 
-                  (n_subheadings * subheading_height) + 
-                  (n_tables * header_height) + 
-                  (total_rows * row_height) + 
-                  ((n_tables - 1) * spacing) + 
-                  margin
-    img_height <- max(14, img_height)  # Minimum 14 inches
-    img_width <- 16  # Increased width for better visibility
+    img_height <- title_height + header_height + (n_rows * row_height) + margin
+    img_height <- max(8, img_height)  # Minimum 8 inches
+    img_width <- 14  # Adequate width for the columns
     
     png("results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
@@ -816,104 +819,43 @@ if (length(significance_tracking) > 0) {
                           x = 0.5, y = unit(1, "npc") - unit(0.2, "in"), just = "top")
     grid.draw(title_grob)
     
-    # Helper function to create a category table with subheading
-    create_category_table <- function(category_df, category_name, y_pos) {
-      # If empty, create a table with "None"
-      if (nrow(category_df) == 0) {
-        table_data <- data.frame(
-          "Surgeon/Site" = "None",
-          "n" = "",
-          "Unadjusted p" = "",
-          "Adjusted p" = "",
-          "R² adjusted (KF)" = "",
-          stringsAsFactors = FALSE,
-          check.names = FALSE
-        )
-      } else {
-        # Format the data - use multiple comparisons adjusted p-values
-        table_data <- category_df %>%
-          mutate(
-            pval_unadjusted_fmt = sapply(pval_unadjusted, format_pval),
-            pval_adjusted_fmt = sapply(pval_adjusted_mc, format_pval),  # Use MC-adjusted p-values
-            r2_adjusted_fmt = ifelse(is.na(r2_adjusted), "", sprintf("%.3f", r2_adjusted))
-          ) %>%
-          select(surgeon, n_cases, pval_unadjusted_fmt, pval_adjusted_fmt, r2_adjusted_fmt) %>%
-          rename(
-            "Surgeon/Site" = surgeon,
-            "n" = n_cases,
-            "Unadjusted p" = pval_unadjusted_fmt,
-            "Adjusted p" = pval_adjusted_fmt,
-            "R² adjusted (KF)" = r2_adjusted_fmt
-          )
-      }
-      
-      # Create subheading - position even further to the right
-      subheading_grob <- textGrob(category_name, 
-                                  gp = gpar(fontsize = 9, fontface = "bold"),
-                                  x = unit(6.5, "in"), y = y_pos, just = c("left", "top"))
-      grid.draw(subheading_grob)
-      y_pos <- y_pos - unit(0.25, "in")
-      
-      # Create table for this category
-      table_grob <- tableGrob(table_data,
-                             theme = ttheme_minimal(
-                               core = list(
-                                 fg_params = list(fontsize = 7.5, hjust = 0, x = 0.01),
-                                 bg_params = list(fill = rep("white", nrow(table_data)))
-                               ),
-                               colhead = list(
-                                 fg_params = list(fontsize = 8, fontface = "bold", hjust = 0, x = 0.01),
-                                 bg_params = list(fill = "grey80")
-                               ),
-                               rowhead = list(fg_params = list(fontsize = 7.5))
+    # Create single unified table
+    table_grob <- tableGrob(surgeons_gt20_sorted,
+                           theme = ttheme_minimal(
+                             core = list(
+                               fg_params = list(fontsize = 8, hjust = 0, x = 0.01),
+                               bg_params = list(fill = rep("white", n_rows))
                              ),
-                             rows = NULL)
-      
-      # Adjust column widths - include R² column
-      table_grob$widths <- unit(c(1.3, 0.6, 1.0, 1.0, 0.8), "in")
-      
-      # Adjust row heights
-      table_grob$heights[1] <- unit(0.3, "in")  # Header row
-      for (i in 2:length(table_grob$heights)) {
-        table_grob$heights[i] <- unit(0.2, "in")  # Data rows
-      }
-      
-      # Calculate table height
-      table_height <- sum(table_grob$heights)
-      
-      # Draw table - position even further to the right
-      pushViewport(viewport(y = y_pos, 
-                           height = table_height,
-                           just = "top",
-                           x = unit(6.5, "in"), 
-                           width = unit(img_width - 7, "in"),
-                           clip = "off"))
-      grid.draw(table_grob)
-      popViewport()
-      
-      # Return new y position (move down by subheading + table + spacing)
-      y_pos - table_height - unit(0.15, "in")
+                             colhead = list(
+                               fg_params = list(fontsize = 9, fontface = "bold", hjust = 0, x = 0.01),
+                               bg_params = list(fill = "grey80")
+                             ),
+                             rowhead = list(fg_params = list(fontsize = 8))
+                           ),
+                           rows = NULL)
+    
+    # Adjust column widths for 6 columns: Surgeon, n, Unadjusted p, Adjusted p, BH-corrected p, R²
+    table_grob$widths <- unit(c(1.2, 0.5, 1.0, 1.0, 1.0, 0.8), "in")
+    
+    # Adjust row heights
+    table_grob$heights[1] <- unit(0.3, "in")  # Header row
+    for (i in 2:length(table_grob$heights)) {
+      table_grob$heights[i] <- unit(0.2, "in")  # Data rows
     }
     
-    # Create tables for each category, starting below title
-    # Always show all 4 categories, even if empty (will show "None")
+    # Calculate table height
+    table_height <- sum(table_grob$heights)
+    
+    # Draw table centered
     y_pos <- unit(1, "npc") - unit(0.8, "in")
-    
-    y_pos <- create_category_table(stayed_sig, 
-                                   "1. Stayed Significant (both unadjusted and adjusted p < 0.05)", 
-                                   y_pos)
-    
-    y_pos <- create_category_table(stayed_nonsig,
-                                   "2. Stayed Non-Significant (both unadjusted and adjusted p >= 0.05)",
-                                   y_pos)
-    
-    y_pos <- create_category_table(changed_to_nonsig,
-                                   "3. Changed from Significant to Non-Significant (unadjusted p < 0.05, adjusted p >= 0.05)",
-                                   y_pos)
-    
-    y_pos <- create_category_table(changed_to_sig,
-                                   "4. Changed from Non-Significant to Significant (unadjusted p >= 0.05, adjusted p < 0.05)",
-                                   y_pos)
+    pushViewport(viewport(y = y_pos, 
+                         height = table_height,
+                         just = "top",
+                         x = unit(0.5, "npc"), 
+                         width = unit(img_width - 1, "in"),
+                         clip = "off"))
+    grid.draw(table_grob)
+    popViewport()
     
     dev.off()
     
