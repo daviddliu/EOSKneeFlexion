@@ -650,12 +650,17 @@ if (length(significance_tracking) > 0) {
     cat(sprintf("  Alpha level: 0.05\n"))
     cat(sprintf("  Multiple comparisons adjustment: %s\n\n", P_VALUE_ADJUSTMENT_METHOD))
     
-    # Apply p-value adjustment to the adjusted p-values (from multivariate model)
+    # Benjamini–Hochberg FDR across surgeons: apply separately to unadjusted and to PCA-adjusted p-values
     if (P_VALUE_ADJUSTMENT_METHOD != "none") {
+      surgeons_gt20$pval_unadjusted_bh <- p.adjust(surgeons_gt20$pval_unadjusted, method = P_VALUE_ADJUSTMENT_METHOD)
       surgeons_gt20$pval_adjusted_mc <- p.adjust(surgeons_gt20$pval_adjusted, method = P_VALUE_ADJUSTMENT_METHOD)
-      cat(sprintf("Applied %s correction to adjusted p-values\n", P_VALUE_ADJUSTMENT_METHOD))
-      cat("  (Adjusted p-values are from multivariate model, then corrected for multiple comparisons)\n\n")
+      cat(sprintf(
+        "Applied %s (Benjamini–Hochberg FDR) across %d surgeons to unadjusted p-values and to adjusted p-values\n",
+        P_VALUE_ADJUSTMENT_METHOD, n_surgeons
+      ))
+      cat("  (Adjusted p-values are from the PCA model; each family is FDR-corrected over surgeons.)\n\n")
     } else {
+      surgeons_gt20$pval_unadjusted_bh <- surgeons_gt20$pval_unadjusted
       surgeons_gt20$pval_adjusted_mc <- surgeons_gt20$pval_adjusted
       cat("No multiple comparisons adjustment applied\n\n")
     }
@@ -670,7 +675,8 @@ if (length(significance_tracking) > 0) {
         cat(sprintf("Surgeon: %s\n", smith_justin$surgeon[i]))
         cat(sprintf("  Unadjusted p: %.6f\n", smith_justin$pval_unadjusted[i]))
         cat(sprintf("  Adjusted p (multivariate): %.6f\n", smith_justin$pval_adjusted[i]))
-        cat(sprintf("  FDR/BH adjusted p: %.6f\n", smith_justin$pval_adjusted_mc[i]))
+        cat(sprintf("  BH-FDR (unadjusted): %.6f\n", smith_justin$pval_unadjusted_bh[i]))
+        cat(sprintf("  BH-FDR (adjusted): %.6f\n", smith_justin$pval_adjusted_mc[i]))
         cat(sprintf("  n = %d\n", smith_justin$n_cases[i]))
         cat("\n")
       }
@@ -682,12 +688,14 @@ if (length(significance_tracking) > 0) {
         filter(grepl("Smith.*Justin|Justin.*Smith", surgeon, ignore.case = TRUE))
       if (nrow(all_smith) > 0) {
         # Apply FDR to all surgeons
+        all_smith$pval_unadjusted_bh <- p.adjust(all_smith$pval_unadjusted, method = P_VALUE_ADJUSTMENT_METHOD)
         all_smith$pval_adjusted_mc <- p.adjust(all_smith$pval_adjusted, method = P_VALUE_ADJUSTMENT_METHOD)
         for (i in seq_len(nrow(all_smith))) {
           cat(sprintf("Surgeon: %s\n", all_smith$surgeon[i]))
           cat(sprintf("  Unadjusted p: %.6f\n", all_smith$pval_unadjusted[i]))
           cat(sprintf("  Adjusted p (multivariate): %.6f\n", all_smith$pval_adjusted[i]))
-          cat(sprintf("  FDR/BH adjusted p: %.6f\n", all_smith$pval_adjusted_mc[i]))
+          cat(sprintf("  BH-FDR (unadjusted): %.6f\n", all_smith$pval_unadjusted_bh[i]))
+          cat(sprintf("  BH-FDR (adjusted): %.6f\n", all_smith$pval_adjusted_mc[i]))
           cat(sprintf("  n = %d\n", all_smith$n_cases[i]))
           cat("\n")
         }
@@ -785,16 +793,23 @@ if (length(significance_tracking) > 0) {
         surgeon_anon = paste0("Surgeon ", row_number()),
         pval_unadjusted_fmt = sapply(pval_unadjusted, format_pval),
         pval_adjusted_fmt = sapply(pval_adjusted, format_pval),
-        pval_bh_fmt = sapply(pval_adjusted_mc, format_pval),
+        pval_unadjusted_bh_fmt = sapply(pval_unadjusted_bh, format_pval),
+        pval_adjusted_bh_fmt = sapply(pval_adjusted_mc, format_pval),
         r2_adjusted_fmt = ifelse(is.na(r2_adjusted), "", sprintf("%.3f", r2_adjusted))
       ) %>%
-      select(surgeon_anon, n_cases, pval_unadjusted_fmt, pval_adjusted_fmt, pval_bh_fmt, r2_adjusted_fmt) %>%
+      select(
+        surgeon_anon, n_cases,
+        pval_unadjusted_fmt, pval_adjusted_fmt,
+        pval_unadjusted_bh_fmt, pval_adjusted_bh_fmt,
+        r2_adjusted_fmt
+      ) %>%
       rename(
         "Surgeon" = surgeon_anon,
         "n" = n_cases,
         "Unadjusted p" = pval_unadjusted_fmt,
         "Adjusted p" = pval_adjusted_fmt,
-        "BH-corrected p" = pval_bh_fmt,
+        "Unadjusted p (BH-FDR)" = pval_unadjusted_bh_fmt,
+        "Adjusted p (BH-FDR)" = pval_adjusted_bh_fmt,
         "R² adjusted (KF)" = r2_adjusted_fmt
       )
     
@@ -807,9 +822,9 @@ if (length(significance_tracking) > 0) {
     
     img_height <- title_height + header_height + (n_rows * row_height) + margin
     img_height <- max(8, img_height)  # Minimum 8 inches
-    img_width <- 14  # Adequate width for the columns
+    img_width <- 16  # Wider for BH columns on unadjusted and adjusted p-values
     
-    png("results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
+    png("results/analysis3_PCA_BH_table.png", width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
     
     # Create title
@@ -834,8 +849,8 @@ if (length(significance_tracking) > 0) {
                            ),
                            rows = NULL)
     
-    # Adjust column widths for 6 columns: Surgeon, n, Unadjusted p, Adjusted p, BH-corrected p, R²
-    table_grob$widths <- unit(c(1.2, 0.5, 1.0, 1.0, 1.0, 0.8), "in")
+    # Column widths: Surgeon, n, Unadj, Adj, Unadj BH-FDR, Adj BH-FDR, R²
+    table_grob$widths <- unit(c(1.1, 0.45, 0.85, 0.85, 1.0, 1.0, 0.75), "in")
     
     # Adjust row heights
     table_grob$heights[1] <- unit(0.3, "in")  # Header row
@@ -859,7 +874,38 @@ if (length(significance_tracking) > 0) {
     
     dev.off()
     
-    cat("Saved formatted table image to results/analysis3_PCA_bonferroni_table.png\n")
+    cat("Saved formatted table image to results/analysis3_PCA_BH_table.png\n")
+    
+    if (requireNamespace("writexl", quietly = TRUE)) {
+      excel_path <- "results/by_surgeon_KF_lordosis_PCA_pvalues_BH.xlsx"
+      ex <- surgeons_gt20 %>%
+        arrange(pval_unadjusted) %>%
+        mutate(
+          `Unadjusted p` = sapply(pval_unadjusted, format_pval),
+          `Adjusted p` = sapply(pval_adjusted, format_pval),
+          `Unadjusted p (BH-FDR)` = sapply(pval_unadjusted_bh, format_pval),
+          `Adjusted p (BH-FDR)` = sapply(pval_adjusted_mc, format_pval),
+          `R2 adjusted (partial KF)` = ifelse(is.na(r2_adjusted), NA_real_, r2_adjusted)
+        ) %>%
+        select(
+          Surgeon = surgeon,
+          n = n_cases,
+          `Unadjusted p`,
+          `Adjusted p`,
+          `R2 adjusted (partial KF)`,
+          `Unadjusted p (BH-FDR)`,
+          `Adjusted p (BH-FDR)`
+        )
+      notes <- tibble::tibble(Note = c(
+        "Outcome: preop knee flexion vs change in L1-S1 lordosis at 6 weeks; confounders adjusted via PCA per surgeon.",
+        "Cohort: surgeons with >= 20 cases with available data.",
+        "Benjamini-Hochberg FDR: stats::p.adjust(p, method = \"fdr\") applied separately to the family of unadjusted p-values and to the family of PCA-adjusted p-values across surgeons."
+      ))
+      writexl::write_xlsx(list(`By surgeon` = ex, Notes = notes), excel_path)
+      cat("Saved Excel table to", excel_path, "\n")
+    } else {
+      cat("Package writexl not installed; skip Excel export (install.packages(\"writexl\"))\n")
+    }
   } else {
     cat("No surgeons with >= 20 cases and valid p-values found.\n")
   }

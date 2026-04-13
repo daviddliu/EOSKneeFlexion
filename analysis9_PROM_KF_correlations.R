@@ -77,17 +77,26 @@ cat("\n")
 # Pattern: *_HRQL_SRS_TOTAL and *_HRQL_ODI where * is timepoint
 # Use case-insensitive matching
 # Note: columns may have been renamed by .name_repair (e.g., BL_HRQL_ODI__1)
+# ODI: grep("^BL_HRQL_ODI") wrongly picks BL_HRQL_ODI_Date first — use total score only.
+find_odi_total_col <- function(prefix, dat) {
+  hit <- grep(paste0("^", prefix, "_HRQL_ODI"), names(dat), value = TRUE, ignore.case = TRUE)
+  hit <- hit[grepl(paste0("^", prefix, "_HRQL_ODI(__[0-9]+)?$"), hit, ignore.case = TRUE)]
+  exact <- paste0(prefix, "_HRQL_ODI")
+  hit <- hit[order(hit != exact)]
+  if (length(hit)) hit[1] else NA_character_
+}
+
 # Preoperative (baseline) - uses BL_ prefix
 pre_srs_col <- grep("^BL_HRQL_SRS_TOTAL", names(df), value = TRUE, ignore.case = TRUE)[1]
-pre_odi_col <- grep("^BL_HRQL_ODI", names(df), value = TRUE, ignore.case = TRUE)[1]
+pre_odi_col <- find_odi_total_col("BL", df)
 
 # 6 weeks - uses W6_ prefix
 w6_srs_col <- grep("^W6_HRQL_SRS_TOTAL", names(df), value = TRUE, ignore.case = TRUE)[1]
-w6_odi_col <- grep("^W6_HRQL_ODI", names(df), value = TRUE, ignore.case = TRUE)[1]
+w6_odi_col <- find_odi_total_col("W6", df)
 
 # 2 years - uses Y2_ prefix
 y2_srs_col <- grep("^Y2_HRQL_SRS_TOTAL", names(df), value = TRUE, ignore.case = TRUE)[1]
-y2_odi_col <- grep("^Y2_HRQL_ODI", names(df), value = TRUE, ignore.case = TRUE)[1]
+y2_odi_col <- find_odi_total_col("Y2", df)
 
 # Check which columns were found
 cat("=== PROM Column Identification ===\n")
