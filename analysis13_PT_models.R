@@ -550,12 +550,12 @@ if (all(vif_pca < 2.5)) {
 # ============================================================================
 cat("=== STEP 7: Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Plot 1: Scree plot
-png("results/analysis13_scree_plot.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis13_scree_plot.png", width = 10, height = 6, units = "in", res = 300)
 scree_df <- data.frame(
   Component = 1:length(eigenvalues),
   Eigenvalue = eigenvalues,
@@ -583,10 +583,10 @@ p1 <- ggplot(scree_df, aes(x = Component, y = Eigenvalue)) +
 
 print(p1)
 dev.off()
-cat("Saved scree plot to results/analysis13_scree_plot.png\n")
+cat("Saved scree plot to planned_results/analysis13_scree_plot.png\n")
 
 # Plot 2: Variance explained
-png("results/analysis13_variance_explained.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis13_variance_explained.png", width = 10, height = 6, units = "in", res = 300)
 variance_df <- data.frame(
   Component = 1:length(variance_explained),
   Variance = variance_explained * 100,
@@ -617,10 +617,10 @@ p2 <- ggplot(variance_df, aes(x = Component)) +
 
 print(p2)
 dev.off()
-cat("Saved variance explained plot to results/analysis13_variance_explained.png\n")
+cat("Saved variance explained plot to planned_results/analysis13_variance_explained.png\n")
 
 # Plot 3: Loadings heatmap
-png("results/analysis13_loadings_heatmap.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis13_loadings_heatmap.png", width = 10, height = 8, units = "in", res = 300)
 loadings_long <- loadings_df %>%
   rownames_to_column("Variable") %>%
   pivot_longer(cols = -Variable, names_to = "Component", values_to = "Loading")
@@ -645,10 +645,10 @@ p3 <- ggplot(loadings_long, aes(x = Component, y = Variable, fill = Loading)) +
 
 print(p3)
 dev.off()
-cat("Saved loadings heatmap to results/analysis13_loadings_heatmap.png\n")
+cat("Saved loadings heatmap to planned_results/analysis13_loadings_heatmap.png\n")
 
 # Plot 4: Model comparison
-png("results/analysis13_model_comparison.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis13_model_comparison.png", width = 10, height = 6, units = "in", res = 300)
 coef_comparison <- data.frame(
   Model = comparison_df$Model,
   Coefficient = comparison_df$Pelvic_Tilt_Coef,
@@ -681,7 +681,7 @@ p4 <- ggplot(coef_comparison, aes(x = Model, y = Coefficient)) +
 
 print(p4)
 dev.off()
-cat("Saved model comparison plot to results/analysis13_model_comparison.png\n")
+cat("Saved model comparison plot to planned_results/analysis13_model_comparison.png\n")
 
 # Plot 5: Residual plot (similar to analysis5)
 # This shows the relationship between pelvic tilt and residuals after controlling for PCA components
@@ -706,7 +706,7 @@ r2_full_pca <- summary3$r.squared
 r2_partial_pca <- r2_full_pca - r2_no_pt_pca
 
 # Create the plot
-png("results/analysis13_residual_plot.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis13_residual_plot.png", width = 10, height = 8, units = "in", res = 300)
 p5 <- ggplot(df_pca, aes(x = LATpre_S1PT, y = resid_from_pca_covariates)) +
   geom_point(alpha = 0.6, color = "darkgrey") +
   geom_smooth(method = "lm", se = TRUE, color = "blue", linetype = "solid") +
@@ -733,10 +733,10 @@ p5 <- ggplot(df_pca, aes(x = LATpre_S1PT, y = resid_from_pca_covariates)) +
 
 print(p5)
 dev.off()
-cat("Saved residual plot to results/analysis13_residual_plot.png\n")
+cat("Saved residual plot to planned_results/analysis13_residual_plot.png\n")
 
 # Plot 6: Simple scatter plot (PT vs LL correction)
-png("results/analysis13_pt_vs_ll_correction.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis13_pt_vs_ll_correction.png", width = 10, height = 8, units = "in", res = 300)
 p6 <- ggplot(df_pca, aes(x = LATpre_S1PT, y = change_lordosis)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "solid") +
@@ -762,7 +762,7 @@ p6 <- ggplot(df_pca, aes(x = LATpre_S1PT, y = change_lordosis)) +
 
 print(p6)
 dev.off()
-cat("Saved simple scatter plot to results/analysis13_pt_vs_ll_correction.png\n")
+cat("Saved simple scatter plot to planned_results/analysis13_pt_vs_ll_correction.png\n")
 
 # ============================================================================
 # SUMMARY
@@ -907,4 +907,4 @@ cat("   ⚠  Requires understanding what each component represents\n")
 cat("   ⚠  May lose some information if too few components are used\n\n")
 
 cat("=== Analysis Complete ===\n")
-cat("Check the plots in results/ directory for visualizations.\n\n")
+cat("Check the plots in planned_results/ directory for visualizations.\n\n")

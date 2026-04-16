@@ -131,9 +131,9 @@ notes <- tibble::tibble(Note = c(
   "Regenerate: Rscript analysis20_KF_ODI_SRS_correlations_excel.R"
 ))
 
-if (!dir.exists("results")) dir.create("results")
+if (!dir.exists("planned_results")) dir.create("planned_results")
 
-excel_path <- "results/KF_ODI_SRS22_correlations_by_timepoint.xlsx"
+excel_path <- "planned_results/KF_ODI_SRS22_correlations_by_timepoint.xlsx"
 
 if (!requireNamespace("writexl", quietly = TRUE)) {
   stop("Install writexl: install.packages(\"writexl\")")

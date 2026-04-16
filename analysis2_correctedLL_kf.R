@@ -88,19 +88,19 @@ create_plot <- function(data, x_var, y_var, x_label, y_label, title, filename) {
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
-  filepath <- file.path("results", filename)
+  filepath <- file.path("planned_results", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved plot to", filepath, "\n"))
   
   return(p)
 }
 
-# Ensure results directory exists
-if (!dir.exists("results")) {
-  dir.create("results")
+# Ensure planned_results directory exists
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Plot 1: PI-LL vs Preop Knee Angle

@@ -20,14 +20,22 @@ EXCLUDE_LOW_VOLUME_SURGEONS <- FALSE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+df <- attach_planned_dll(df, db_path)
 
 # Filter out low-volume surgeons if enabled
 if (EXCLUDE_LOW_VOLUME_SURGEONS) {
   df <- filter_low_volume_surgeons(df, min_surgeon_cases = 10)
 }
 
-# Calculate change in pi-ll mismatch using 6-week data
-df$change_PI_LL <- df$LAT6W_PI_LL - df$LATpre_PI_LL
+df <- restrict_planned_dll_analysis_cohort(df)
+cat(sprintf(
+  "\nCohort restricted to |preop PI–LL| > %d° and preop SVA C2–C7 < %d (non-missing): n = %d rows\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT,
+  nrow(df)
+))
+
+# Outcome: Planned \u0394LL (utils/planned_pi_ll.R)
 
 # Calculate T4-L1 PA
 if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
@@ -69,13 +77,15 @@ if ("LATpre_PI_LL" %in% names(df)) {
 }
 
 # Drop patients with missing data for analysis
-# Base variables: knee flexion and change in pi-ll mismatch
+# Base variables: knee flexion and Planned \u0394LL
 # We'll check each parameter individually for missingness
 df_base <- df %>%
-  filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL))
+  filter(
+    !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP
+  )
 
 cat(paste("\n=== Individual Parameter Variance Analysis ===\n"))
-cat(paste("Base sample size:", nrow(df_base), "patients with knee flexion and change in pi-ll mismatch data\n\n"))
+cat(paste("Base sample size:", nrow(df_base), "patients with knee flexion and Planned \u0394LL\n\n"))
 
 # ============================================================================
 # Define parameters to test
@@ -106,7 +116,7 @@ cat("\n")
 # Base model: Knee flexion only
 # ============================================================================
 cat("=== Base Model: Knee Flexion Only ===\n")
-model_base <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_base)
+model_base <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_base)
 summary_base <- summary(model_base)
 
 base_r2 <- summary_base$r.squared
@@ -147,14 +157,14 @@ for (i in seq_along(parameters)) {
   }
   
   # Base model on this subset
-  model_base_subset <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_param)
+  model_base_subset <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_param)
   summary_base_subset <- summary(model_base_subset)
   base_r2_subset <- summary_base_subset$r.squared
   base_kf_coef_subset <- summary_base_subset$coefficients[2, 1]
   base_kf_p_subset <- summary_base_subset$coefficients[2, 4]
   
   # Model with parameter added
-  formula_with_param <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", param_var))
+  formula_with_param <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", param_var))
   model_with_param <- lm(formula_with_param, data = df_param)
   summary_with_param <- summary(model_with_param)
   
@@ -273,12 +283,10 @@ cat("\n")
 # ============================================================================
 cat("=== Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
-}
+pr_dir <- ensure_planned_results_dir()
 
 # Plot 1: R² change (partial R²) for each parameter
-png("results/analysis7_r2_contribution.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_r2_contribution.png"), width = 12, height = 8, units = "in", res = 300)
 p1 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change), y = R2_Change)) +
   geom_bar(stat = "identity", fill = "steelblue", alpha = 0.7) +
   coord_flip() +
@@ -299,10 +307,10 @@ p1 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change), y = R2_Change)) 
 
 print(p1)
 dev.off()
-cat("Saved R² contribution plot to results/analysis7_r2_contribution.png\n")
+cat("Saved R² contribution plot to planned_results/analysis7_r2_contribution.png\n")
 
 # Plot 2: R² change as percentage of total variance (0-100%)
-png("results/analysis7_r2_contribution_pct.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_r2_contribution_pct.png"), width = 12, height = 8, units = "in", res = 300)
 p2 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change_Pct_Of_Total), y = R2_Change_Pct_Of_Total)) +
   geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.7) +
   coord_flip() +
@@ -323,10 +331,10 @@ p2 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change_Pct_Of_Total), y =
 
 print(p2)
 dev.off()
-cat("Saved R² contribution percentage plot to results/analysis7_r2_contribution_pct.png\n")
+cat("Saved R² contribution percentage plot to planned_results/analysis7_r2_contribution_pct.png\n")
 
 # Plot 3: Effect on knee flexion coefficient
-png("results/analysis7_kf_coefficient_change.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_kf_coefficient_change.png"), width = 12, height = 8, units = "in", res = 300)
 p3 <- ggplot(results_df, aes(x = reorder(Parameter, abs(KF_Coefficient_Change_Pct)), 
                              y = KF_Coefficient_Change_Pct)) +
   geom_bar(stat = "identity", fill = "coral", alpha = 0.7) +
@@ -350,10 +358,10 @@ p3 <- ggplot(results_df, aes(x = reorder(Parameter, abs(KF_Coefficient_Change_Pc
 
 print(p3)
 dev.off()
-cat("Saved knee flexion coefficient change plot to results/analysis7_kf_coefficient_change.png\n")
+cat("Saved knee flexion coefficient change plot to planned_results/analysis7_kf_coefficient_change.png\n")
 
 # Plot 4: Partial correlation coefficients
-png("results/analysis7_partial_correlations.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_partial_correlations.png"), width = 12, height = 8, units = "in", res = 300)
 p4 <- ggplot(results_df, aes(x = reorder(Parameter, abs(Partial_R)), y = Partial_R)) +
   geom_bar(stat = "identity", fill = "purple", alpha = 0.7) +
   coord_flip() +
@@ -376,10 +384,10 @@ p4 <- ggplot(results_df, aes(x = reorder(Parameter, abs(Partial_R)), y = Partial
 
 print(p4)
 dev.off()
-cat("Saved partial correlations plot to results/analysis7_partial_correlations.png\n")
+cat("Saved partial correlations plot to planned_results/analysis7_partial_correlations.png\n")
 
 # Plot 5: Combined visualization - R² change vs effect on KF coefficient
-png("results/analysis7_combined_importance.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_combined_importance.png"), width = 12, height = 8, units = "in", res = 300)
 p5 <- ggplot(results_df, aes(x = R2_Change, y = abs(KF_Coefficient_Change_Pct), 
                              label = Parameter, color = Type)) +
   geom_point(size = 4, alpha = 0.7) +
@@ -400,10 +408,10 @@ p5 <- ggplot(results_df, aes(x = R2_Change, y = abs(KF_Coefficient_Change_Pct),
 
 print(p5)
 dev.off()
-cat("Saved combined importance plot to results/analysis7_combined_importance.png\n")
+cat("Saved combined importance plot to planned_results/analysis7_combined_importance.png\n")
 
 # Plot 6: Knee flexion p-value change
-png("results/analysis7_kf_pvalue_change.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis7_kf_pvalue_change.png"), width = 12, height = 8, units = "in", res = 300)
 results_df$KF_P_Change <- results_df$KF_P_With_Param - results_df$KF_P_Base
 results_df$KF_Significance_Change <- factor(
   ifelse(results_df$KF_Significant_Base & !results_df$KF_Significant_With_Param, "Made Non-Sig",
@@ -440,7 +448,7 @@ p6 <- ggplot(results_df, aes(x = reorder(Parameter, KF_P_Change), y = -log10(KF_
 
 print(p6)
 dev.off()
-cat("Saved knee flexion p-value change plot to results/analysis7_kf_pvalue_change.png\n")
+cat("Saved knee flexion p-value change plot to planned_results/analysis7_kf_pvalue_change.png\n")
 
 # ============================================================================
 # Summary statistics
@@ -489,8 +497,8 @@ if (nrow(large_effect) > 0) {
 cat("\n")
 
 # Save results table
-write.csv(results_df, "results/analysis7_individual_parameter_results.csv", row.names = FALSE)
-cat("Saved detailed results table to results/analysis7_individual_parameter_results.csv\n")
+write.csv(results_df, file.path(pr_dir, "analysis7_individual_parameter_results.csv"), row.names = FALSE)
+cat("Saved detailed results table to planned_results/analysis7_individual_parameter_results.csv\n")
 
 # ============================================================================
 # PROOF: Is Knee Flexion a Confounder?
@@ -510,7 +518,7 @@ tested_params <- results_df$Variable
 tested_labels <- results_df$Parameter
 
 # Find subset with all tested parameters available
-all_params_vars <- c("LATpre_LL_KneeAngle", "change_PI_LL", tested_params)
+all_params_vars <- c("LATpre_LL_KneeAngle", "planned_DLL", tested_params)
 df_all_params <- df_base %>%
   filter(complete.cases(select(., all_of(all_params_vars))))
 
@@ -518,7 +526,7 @@ if (nrow(df_all_params) >= 10) {
   cat(sprintf("1. Testing with ALL parameters simultaneously (n = %d):\n", nrow(df_all_params)))
   
   # Unadjusted model
-  model_unadj_all <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_all_params)
+  model_unadj_all <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_all_params)
   summary_unadj_all <- summary(model_unadj_all)
   coef_unadj_all <- summary_unadj_all$coefficients[2, 1]
   p_unadj_all <- summary_unadj_all$coefficients[2, 4]
@@ -526,7 +534,7 @@ if (nrow(df_all_params) >= 10) {
   
   # Fully adjusted model
   if (length(tested_params) > 0) {
-    formula_adj_all <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+    formula_adj_all <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                         paste(tested_params, collapse = " + ")))
     model_adj_all <- lm(formula_adj_all, data = df_all_params)
     summary_adj_all <- summary(model_adj_all)
@@ -602,5 +610,5 @@ cat(rep("=", 80), "\n\n")
 cat("\n=== Analysis Complete ===\n")
 cat("This analysis shows how much variance each individual preop parameter explains\n")
 cat("in the preop knee flexion vs change in lumbar lordosis relationship.\n")
-cat("Check the plots in results/ directory for visualizations.\n\n")
+cat("Check the plots in planned_results/ directory for visualizations.\n\n")
 

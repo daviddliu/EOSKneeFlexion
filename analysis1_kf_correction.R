@@ -14,6 +14,9 @@ source("utils/utils.R")
 # Configuration: Toggle PJK exclusion on/off
 EXCLUDE_PJK <- TRUE
 
+# Preop PI–LL mismatch (|LATpre_PI_LL|) must exceed this (°) to be included; NULL = no restriction
+PREOP_PILL_MIN <- 10
+
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
@@ -27,7 +30,28 @@ df$change_lordosis <- df$LAT1Y_L1_S1 - df$LATpre_L1_S1
 df_clean <- df %>%
   filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis))
 
-cat(paste("Analysis includes", nrow(df_clean), "patients (dropped", nrow(df) - nrow(df_clean), "patients with missing data)\n"))
+cat(sprintf(
+  "After complete KF + 1Y lordosis change: n = %d (dropped %d)\n",
+  nrow(df_clean),
+  nrow(df) - nrow(df_clean)
+))
+
+if (!is.null(PREOP_PILL_MIN)) {
+  if (!"LATpre_PI_LL" %in% names(df_clean)) {
+    stop("COMBINE data must contain LATpre_PI_LL when PREOP_PILL_MIN is set")
+  }
+  n_before <- nrow(df_clean)
+  df_clean <- df_clean %>%
+    filter(!is.na(LATpre_PI_LL), abs(LATpre_PI_LL) > PREOP_PILL_MIN)
+  cat(sprintf(
+    "Restricted to |preop PI–LL| > %d°: n = %d (excluded %d)\n",
+    PREOP_PILL_MIN,
+    nrow(df_clean),
+    n_before - nrow(df_clean)
+  ))
+}
+
+cat(sprintf("Analysis sample: n = %d\n", nrow(df_clean)))
 
 # Perform linear regression
 model <- lm(change_lordosis ~ LATpre_LL_KneeAngle, data = df_clean)
@@ -45,11 +69,17 @@ p <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = change_lordosis)) +
   labs(
     x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
     y = "Change in Lordosis (LAT1Y_L1_S1 - LATpre_L1_S1)",
-    title = "Preoperative Knee Flexion vs Change in Lordosis"
+    title = "Preoperative Knee Flexion vs Change in Lordosis",
+    subtitle = if (is.null(PREOP_PILL_MIN)) {
+      NULL
+    } else {
+      sprintf("|preop PI–LL| > %d°", PREOP_PILL_MIN)
+    }
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA)
   )
@@ -70,9 +100,14 @@ p <- p + annotate(
 )
 
 # Save plot
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
-ggsave("results/analysis1_kf_correction.png", plot = p, width = 10, height = 8, dpi = 300)
-cat("Saved plot to results/analysis1_kf_correction.png\n")
+out_png <- if (is.null(PREOP_PILL_MIN)) {
+  "planned_results/analysis1_kf_correction.png"
+} else {
+  sprintf("planned_results/analysis1_kf_correction_preopPILLgt%d.png", PREOP_PILL_MIN)
+}
+ggsave(out_png, plot = p, width = 10, height = 8, dpi = 300)
+cat(sprintf("Saved plot to %s\n", out_png))
 

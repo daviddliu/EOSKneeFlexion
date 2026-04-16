@@ -379,8 +379,8 @@ perform_regression <- function(data, x_var, y_var, x_label, y_label, title, file
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
   ggsave(filename, plot = p, width = 10, height = 8, dpi = 300)
   cat(sprintf("Saved plot to %s\n", filename))
@@ -436,7 +436,7 @@ if (!is.na(pre_srs_col) && pre_srs_col %in% names(df)) {
     "Preoperative Knee Flexion (degrees)",
     "Preoperative SRS-22 Total Score",
     "Absolute Preoperative Knee Flexion vs Preoperative SRS-22 Total Score",
-    "results/analysis9_preop_KF_vs_preop_SRS.png",
+    "planned_results/analysis9_preop_KF_vs_preop_SRS.png",
     confounder_vars = pre_confounders
   )
 }
@@ -449,7 +449,7 @@ if (!is.na(pre_odi_col) && pre_odi_col %in% names(df)) {
     "Preoperative Knee Flexion (degrees)",
     "Preoperative ODI Score",
     "Absolute Preoperative Knee Flexion vs Preoperative ODI Score",
-    "results/analysis9_preop_KF_vs_preop_ODI.png",
+    "planned_results/analysis9_preop_KF_vs_preop_ODI.png",
     confounder_vars = pre_confounders
   )
 }
@@ -464,7 +464,7 @@ if (!is.na(w6_srs_col) && w6_srs_col %in% names(df)) {
     "6-Week Knee Flexion (degrees)",
     "6-Week SRS-22 Total Score",
     "Absolute 6-Week Knee Flexion vs 6-Week SRS-22 Total Score",
-    "results/analysis9_6W_KF_vs_6W_SRS.png",
+    "planned_results/analysis9_6W_KF_vs_6W_SRS.png",
     confounder_vars = w6_confounders
   )
 }
@@ -477,7 +477,7 @@ if (!is.na(w6_odi_col) && w6_odi_col %in% names(df)) {
     "6-Week Knee Flexion (degrees)",
     "6-Week ODI Score",
     "Absolute 6-Week Knee Flexion vs 6-Week ODI Score",
-    "results/analysis9_6W_KF_vs_6W_ODI.png",
+    "planned_results/analysis9_6W_KF_vs_6W_ODI.png",
     confounder_vars = w6_confounders
   )
 }
@@ -511,7 +511,7 @@ if (!is.null(y2_kf_col)) {
       y2_kf_label,
       "2-Year SRS-22 Total Score",
       paste("Absolute", y2_kf_label, "vs 2-Year SRS-22 Total Score"),
-      "results/analysis9_2Y_KF_vs_2Y_SRS.png",
+      "planned_results/analysis9_2Y_KF_vs_2Y_SRS.png",
       confounder_vars = y2_confounders
     )
   }
@@ -524,7 +524,7 @@ if (!is.null(y2_kf_col)) {
       y2_kf_label,
       "2-Year ODI Score",
       paste("Absolute", y2_kf_label, "vs 2-Year ODI Score"),
-      "results/analysis9_2Y_KF_vs_2Y_ODI.png",
+      "planned_results/analysis9_2Y_KF_vs_2Y_ODI.png",
       confounder_vars = y2_confounders
     )
   }
@@ -647,8 +647,8 @@ if (nrow(summary_df) > 0) {
   cat(sprintf("Note: Plots show uncorrected p-values. Summary table shows both uncorrected and Bonferroni-corrected p-values.\n\n"))
   
   # Save summary to CSV first (safer than print)
-  write.csv(summary_df, "results/analysis9_PROM_KF_correlations_summary.csv", row.names = FALSE)
-  cat("Saved summary table to results/analysis9_PROM_KF_correlations_summary.csv\n")
+  write.csv(summary_df, "planned_results/analysis9_PROM_KF_correlations_summary.csv", row.names = FALSE)
+  cat("Saved summary table to planned_results/analysis9_PROM_KF_correlations_summary.csv\n")
   
   # Print summary table manually to avoid difftime issues
   cat("\nSummary Table (Unadjusted and PCA-Adjusted with Bonferroni correction):\n")

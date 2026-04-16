@@ -297,17 +297,17 @@ if (nrow(max_decreases) > 0) {
 }
 
 # Save correlation matrix to CSV
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Save as CSV
-write.csv(cor_matrix, "results/analysis11_KF_radiographic_correlations.csv", row.names = TRUE)
-cat("\nSaved correlation matrix to: results/analysis11_KF_radiographic_correlations.csv\n")
+write.csv(cor_matrix, "planned_results/analysis11_KF_radiographic_correlations.csv", row.names = TRUE)
+cat("\nSaved correlation matrix to: planned_results/analysis11_KF_radiographic_correlations.csv\n")
 
 # Save sample sizes
-write.csv(n_matrix, "results/analysis11_KF_radiographic_correlations_n.csv", row.names = TRUE)
-cat("Saved sample sizes to: results/analysis11_KF_radiographic_correlations_n.csv\n")
+write.csv(n_matrix, "planned_results/analysis11_KF_radiographic_correlations_n.csv", row.names = TRUE)
+cat("Saved sample sizes to: planned_results/analysis11_KF_radiographic_correlations_n.csv\n")
 
 # Create a formatted table for display (using knitr::kable if available)
 cat("\n================================================================================\n")

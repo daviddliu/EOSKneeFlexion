@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+#
+# Analysis 3 — planned ΔLL (planned_DLL) analog of analysis3_by_surgeon.R:
+#   per-surgeon preop knee flexion vs planned_DLL (analysis 1), PI–LL vs knee plots (analysis 2),
+#   and PCA-adjusted knee flexion vs planned_DLL (analysis 4).
+#
+# Plot titles use "Surgeon: surgeon {k}" and PNGs use ..._###_... (k = 1..K) with surgeons
+# ordered by decreasing cohort size (surgeon 1 = most patients; ties broken alphabetically). Console logs still use real names.
+# Cohort: |preop PI–LL| > PREOP_ABS_PI_LL_GT only (no preop SVA C2–C7 cut).
+# Run: Rscript analysis3_by_surgeon_PILL.R
+# Cache: planned_results/analysis3_PCA_significance_tracking_cache_PILL.rds (not the Δlordosis cache).
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -13,11 +23,17 @@ options(warn = -1)
 # Source utility functions
 source("utils/utils.R")
 
+pr_dir <- ensure_planned_results_dir()
+surgeon_plot_dir <- ensure_planned_results_dir("by_surgeon")
+
+# Filenames distinct from analysis3_by_surgeon.R (Δ lordosis) so runs do not overwrite.
+OUT_SURGEON_PREFIX <- "analysis3_PILL_surgeon_"
+
 # Configuration: Toggle PJK exclusion on/off
 EXCLUDE_PJK <- TRUE
 
-# Check if cache exists - if so, skip database loading
-cache_file <- "results/analysis3_PCA_significance_tracking_cache.rds"
+# Significance / skip-load cache (separate from Δlordosis analysis3 cache)
+cache_file <- file.path(pr_dir, "analysis3_PCA_significance_tracking_cache_PILL.rds")
 if (file.exists(cache_file)) {
   cat("\n=== Cache found - skipping database load ===\n")
   load_database <- FALSE
@@ -30,6 +46,18 @@ if (load_database) {
   # Load database
   db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
   df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+  df <- attach_planned_dll(df, db_path)
+  # PI–LL mismatch screen only (no preop SVA C2–C7 restriction; cf. restrict_planned_dll_analysis_cohort).
+  df <- df %>%
+    dplyr::filter(
+      !is.na(.data$LATpre_PI_LL),
+      abs(.data$LATpre_PI_LL) > PREOP_ABS_PI_LL_GT
+    )
+  cat(sprintf(
+    "\nCohort: |preop PI–LL| > %d° (non-missing); no SVA C2–C7 screen: n = %d rows\n",
+    PREOP_ABS_PI_LL_GT,
+    nrow(df)
+  ))
 
   # Impute missing surgeon by randomly assigning to other surgeons at the same site
   # Set random seed for reproducibility
@@ -85,21 +113,24 @@ if (load_database) {
     cat("Warning: demo_site_txt column not found. Patients with missing surgeon will be excluded.\n")
   }
 
-  # Get unique surgeons (now includes imputed site-based groups)
-  surgeons <- unique(df$SxI_Gen_Surgeon)
-  surgeons <- surgeons[!is.na(surgeons)]
+  # Anon IDs: surgeon 1 = largest cohort, ... last = smallest (ties: alphabetical name)
+  surgeons <- df %>%
+    filter(!is.na(SxI_Gen_Surgeon)) %>%
+    mutate(sx = as.character(SxI_Gen_Surgeon)) %>%
+    filter(nzchar(sx)) %>%
+    count(sx, name = "n_patients") %>%
+    arrange(desc(n_patients), sx) %>%
+    pull(sx)
   cat(paste("Found", length(surgeons), "surgeon/site groups\n"))
 }
 
-# Function for Analysis 1: Preop knee flexion vs change in pi-ll mismatch
-analysis1_by_surgeon <- function(data, surgeon_name) {
-  # Calculate change in pi-ll mismatch using 6-week data
-  data$change_PI_LL <- data$LAT6W_PI_LL - data$LATpre_PI_LL
-  
+# Function for Analysis 1: Preop knee flexion vs Planned \u0394LL
+analysis1_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Drop patients with missing data (listwise deletion)
-  # No imputation - patients with missing LATpre_LL_KneeAngle or change_PI_LL are excluded
   data_clean <- data %>%
-    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL))
+    filter(
+      !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP
+    )
   
   if (nrow(data_clean) == 0) {
     cat(paste("Warning: No valid data for surgeon", surgeon_name, "in Analysis 1\n"))
@@ -113,7 +144,7 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
   }
   
   # Perform linear regression
-  model <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = data_clean)
+  model <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = data_clean)
   summary_model <- summary(model)
   
   # Check if regression coefficients are available
@@ -126,16 +157,16 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
   p_value <- summary_model$coefficients[2, 4]
   
   # Calculate Pearson correlation coefficient
-  pearson_r <- cor(data_clean$LATpre_LL_KneeAngle, data_clean$change_PI_LL, use = "complete.obs")
+  pearson_r <- cor(data_clean$LATpre_LL_KneeAngle, data_clean$planned_DLL, use = "complete.obs")
   
   # Create plot
-  p <- ggplot(data_clean, aes(x = LATpre_LL_KneeAngle, y = change_PI_LL)) +
+  p <- ggplot(data_clean, aes(x = LATpre_LL_KneeAngle, y = planned_DLL)) +
     geom_point(alpha = 0.6) +
     geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "solid") +
     labs(
-      x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
-      y = "Change in PI-LL Mismatch (LAT6W_PI_LL - LATpre_PI_LL, 6-week)",
-      title = paste0("Preoperative Knee Flexion vs Change in PI-LL Mismatch (6-week)\nSurgeon: ", surgeon_name),
+      x = "Preoperative Knee Flexion (°)",
+      y = "Planned \u0394LL (\u00b0)",
+      title = paste0("Preoperative Knee Flexion vs Planned \u0394LL\nSurgeon: surgeon ", surgeon_idx),
       subtitle = paste0("n = ", nrow(data_clean))
     ) +
     theme_minimal() +
@@ -162,15 +193,9 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
-  }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
-  }
   safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis1.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filename <- paste0(OUT_SURGEON_PREFIX, safe_surgeon_name, "_analysis1.png")
+  filepath <- file.path(surgeon_plot_dir, filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 1 for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -178,7 +203,7 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
 }
 
 # Function for Analysis 2: PI-LL mismatch vs knee flexion measures
-analysis2_by_surgeon <- function(data, surgeon_name) {
+analysis2_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Drop patients with missing PI-LL data (using 6-week data)
   data_filtered <- data %>%
     filter(!is.na(LAT6W_PI_LL))
@@ -192,8 +217,8 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
   # Note: If either value is missing, knee_angle_diff will be NA (dropped in each plot)
   data_filtered$knee_angle_diff <- data_filtered$LAT6W_LL_KneeAngle - data_filtered$LATpre_LL_KneeAngle
   
-  safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  
+  anon_file_id <- sprintf("%03d", surgeon_idx)
+
   # Helper function to create plot
   create_plot <- function(data, x_var, y_var, x_label, y_label, title_suffix, plot_num) {
     # Drop patients with missing data for this specific variable pair (listwise deletion)
@@ -236,7 +261,7 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
       labs(
         x = x_label,
         y = y_label,
-        title = paste0(title_suffix, " vs PI-LL Mismatch (6-week)\nSurgeon: ", surgeon_name),
+        title = paste0(title_suffix, " vs PI-LL Mismatch (6-week)\nSurgeon: surgeon ", surgeon_idx),
         subtitle = paste0("n = ", nrow(data_clean))
       ) +
       theme_minimal() +
@@ -263,14 +288,8 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
     )
     
     # Save plot
-    if (!dir.exists("results")) {
-      dir.create("results")
-    }
-    if (!dir.exists("results/by_surgeon")) {
-      dir.create("results/by_surgeon")
-    }
-    filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis2_", plot_num, ".png")
-    filepath <- file.path("results/by_surgeon", filename)
+    filename <- paste0(OUT_SURGEON_PREFIX, anon_file_id, "_analysis2_", plot_num, ".png")
+    filepath <- file.path(surgeon_plot_dir, filename)
     ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
     cat(paste("Saved Analysis 2, Plot", plot_num, "for surgeon", surgeon_name, "to", filepath, "\n"))
     
@@ -312,10 +331,7 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
 }
 
 # Function for Analysis 4: PCA-based confounder analysis (preop knee flexion adjusted for PCA components)
-analysis4_by_surgeon <- function(data, surgeon_name) {
-  # Calculate change in pi-ll mismatch using 6-week data
-  data$change_PI_LL <- data$LAT6W_PI_LL - data$LATpre_PI_LL
-  
+analysis4_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Calculate T4-L1 PA
   if ("LATpre_L1PA" %in% names(data) && "LATpre_T4PA" %in% names(data)) {
     data$LATpre_T4_L1_PA <- data$LATpre_L1PA - data$LATpre_T4PA
@@ -339,15 +355,21 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   # Confounder set: S1PI (preop), Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA, Age
   if (!is.null(age_var)) {
     data_clean <- data %>%
-      filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL) & !is.na(LATpre_S1PI) &
-             !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-             !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) & 
-             !is.na(.data[[age_var]]))
+      filter(
+        !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP &
+          !is.na(LATpre_S1PI) &
+          !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) &
+          !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) &
+          !is.na(.data[[age_var]])
+      )
   } else {
     data_clean <- data %>%
-      filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL) & !is.na(LATpre_S1PI) &
-             !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-             !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+      filter(
+        !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP &
+          !is.na(LATpre_S1PI) &
+          !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) &
+          !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA)
+      )
   }
   
   n_cases <- nrow(data_clean)
@@ -364,7 +386,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   }
   
   # Model 1: Simple regression (preop knee flexion only)
-  model1 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = data_clean)
+  model1 <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = data_clean)
   summary1 <- summary(model1)
   
   if (nrow(summary1$coefficients) < 2) {
@@ -394,18 +416,18 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     cat(paste("  Falling back to original confounder model\n"))
     # Fall back to original model
     if (!is.null(age_var)) {
-      formula_str <- paste("change_PI_LL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 +",
+      formula_str <- paste("planned_DLL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 +",
                           "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
                           "LATpre_T4_L1_PA +", age_var)
       model2 <- lm(as.formula(formula_str), data = data_clean)
-      covariates_formula_str <- paste("change_PI_LL ~ LATpre_S1PI + LATpre_L1_S1 +",
+      covariates_formula_str <- paste("planned_DLL ~ LATpre_S1PI + LATpre_L1_S1 +",
                                        "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
                                        "LATpre_T4_L1_PA +", age_var)
       covariates_model <- lm(as.formula(covariates_formula_str), data = data_clean)
     } else {
-      model2 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 + 
+      model2 <- lm(planned_DLL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 + 
                    LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
-      covariates_model <- lm(change_PI_LL ~ LATpre_S1PI + LATpre_L1_S1 + 
+      covariates_model <- lm(planned_DLL ~ LATpre_S1PI + LATpre_L1_S1 + 
                              LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = data_clean)
     }
     summary2 <- summary(model2)
@@ -456,7 +478,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
       }
       
       # Fit model
-      pca_formula_temp <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+      pca_formula_temp <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                            paste(paste0("PC", 1:n_comp), collapse = " + ")))
       model_temp <- lm(pca_formula_temp, data = data_temp)
       
@@ -474,7 +496,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     }
     
     # Model 2: Multiple regression with PCA components
-    pca_formula <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+    pca_formula <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                     paste(paste0("PC", 1:n_components_use), collapse = " + ")))
     model2 <- lm(pca_formula, data = data_clean)
     summary2 <- summary(model2)
@@ -489,7 +511,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     r2_model2 <- summary2$r.squared
     
     # Calculate residuals from PCA covariates model (for plotting)
-    pca_formula_no_kf <- as.formula(paste("change_PI_LL ~", 
+    pca_formula_no_kf <- as.formula(paste("planned_DLL ~", 
                                           paste(paste0("PC", 1:n_components_use), collapse = " + ")))
     covariates_model <- lm(pca_formula_no_kf, data = data_clean)
     data_clean$resid_from_covariates <- residuals(covariates_model)
@@ -507,7 +529,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
   }
   
   # Calculate zero-order correlation
-  r_kf_lordosis <- cor(data_clean$LATpre_LL_KneeAngle, data_clean$change_PI_LL, use = "complete.obs")
+  r_kf_lordosis <- cor(data_clean$LATpre_LL_KneeAngle, data_clean$planned_DLL, use = "complete.obs")
   
   # Print summary
   cat(paste("  Analysis 4 (PCA) - Unadjusted coefficient:", round(coef1_kf, 4), 
@@ -524,10 +546,11 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     geom_smooth(method = "lm", se = TRUE, color = "blue") +
     geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
     labs(
-      x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
-      y = paste0("Residuals from PCA Covariates Model\n(Change in PI-LL Mismatch after removing effects of ", n_components_used, ")"),
-      title = paste0("PCA-Based Confounder Analysis (6-week follow-up)\nSurgeon: ", surgeon_name),
-      subtitle = paste0("Adjusted relationship (n = ", nrow(data_clean), ")")
+      x = "Preoperative Knee Flexion (°)",
+      y = paste0(
+        "Residuals in planned ΔLL (°) from PCA-based model"),
+      title = paste0("Residual relationship in knee flexion with planned \u0394LL:\nVariance subtracted from PCA-based model\nSurgeon: surgeon ", surgeon_idx),
+      subtitle = paste0("n = ", nrow(data_clean))
     ) +
     theme_minimal() +
     theme(
@@ -541,20 +564,13 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
       label = paste0("Partial r = ", round(r_partial, 3),
                      "\nAdjusted coeff = ", round(coef2_kf, 4),
                      "\np = ", formatC(pval2_kf, format = "e", digits = 2),
-                     "\nR² adjusted (KF) = ", round(r2_kf_change, 3)),
-      hjust = 1.1, vjust = 1.5, size = 3.5, fontface = "bold"
+                     "\nR\u00b2 adjusted (KF) = ", round(r2_kf_change, 3)),
+      hjust = 1.05, vjust = 1.15, size = 4, fontface = "bold"
     )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
-  }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
-  }
-  safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis4_PCA.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filename <- paste0(OUT_SURGEON_PREFIX, sprintf("%03d", surgeon_idx), "_analysis4_PCA.png")
+  filepath <- file.path(surgeon_plot_dir, filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 4 (PCA) for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -584,8 +600,9 @@ if (run_analyses) {
     stop("Error: Database not loaded but cache not found. Cannot proceed.")
   }
   # Loop through each surgeon and perform all analyses
-  for (surgeon in surgeons) {
-    cat(paste("\n=== Processing surgeon:", surgeon, "===\n"))
+  for (surgeon_idx in seq_along(surgeons)) {
+    surgeon <- surgeons[surgeon_idx]
+    cat(sprintf("\n=== Processing surgeon: %s (plot title: surgeon %d) ===\n", surgeon, surgeon_idx))
     
     # Filter data for current surgeon
     df_surgeon <- df %>%
@@ -594,22 +611,19 @@ if (run_analyses) {
     cat(paste("Surgeon", surgeon, "has", nrow(df_surgeon), "patients\n"))
     
     # Perform Analysis 1
-    analysis1_by_surgeon(df_surgeon, surgeon)
+    analysis1_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     
     # Perform Analysis 2
-    analysis2_by_surgeon(df_surgeon, surgeon)
+    analysis2_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     
     # Perform Analysis 4 and track results
-    result_analysis4 <- analysis4_by_surgeon(df_surgeon, surgeon)
+    result_analysis4 <- analysis4_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     if (!is.null(result_analysis4)) {
       significance_tracking[[length(significance_tracking) + 1]] <- result_analysis4
     }
   }
   
   # Save results to cache
-  if (!dir.exists("results")) {
-    dir.create("results")
-  }
   saveRDS(significance_tracking, cache_file)
   cat(paste("\n=== Saved results to cache:", cache_file, "===\n"))
 }
@@ -773,10 +787,6 @@ if (length(significance_tracking) > 0) {
     }
     
     # Prepare data for unified table
-    if (!dir.exists("results")) {
-      dir.create("results")
-    }
-    
     # Combine all surgeons into one table and anonymize
     # Sort by unadjusted p-value (lowest to highest) for consistent anonymization
     surgeons_gt20_sorted <- surgeons_gt20 %>%
@@ -809,11 +819,12 @@ if (length(significance_tracking) > 0) {
     img_height <- max(8, img_height)  # Minimum 8 inches
     img_width <- 14  # Adequate width for the columns
     
-    png("results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
+    bonferroni_png <- file.path(pr_dir, "analysis3_PCA_bonferroni_table_PILL.png")
+    png(bonferroni_png, width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
     
     # Create title
-    title_text <- paste0("Adjusted p-values after PCA-based confounder adjustment\nPreop knee flexion vs change in pi-ll mismatch at 6 weeks (Surgeons with >=20 cases with available data)")
+    title_text <- paste0("Adjusted p-values after PCA-based confounder adjustment\nPreop knee flexion vs planned \u0394LL (Surgeons with \u226520 cases with available data)")
     
     title_grob <- textGrob(title_text, gp = gpar(fontsize = 10, fontface = "bold"),
                           x = 0.5, y = unit(1, "npc") - unit(0.2, "in"), just = "top")
@@ -859,7 +870,27 @@ if (length(significance_tracking) > 0) {
     
     dev.off()
     
-    cat("Saved formatted table image to results/analysis3_PCA_bonferroni_table.png\n")
+    cat("Saved formatted table image to", bonferroni_png, "\n")
+
+    bonferroni_csv <- file.path(pr_dir, "analysis3_PCA_bonferroni_table_PILL.csv")
+    csv_tbl <- surgeons_gt20 %>%
+      dplyr::arrange(.data$pval_unadjusted) %>%
+      dplyr::mutate(
+        surgeon_anon = paste0("Surgeon ", dplyr::row_number()),
+        multiple_comparison_method = P_VALUE_ADJUSTMENT_METHOD
+      ) %>%
+      dplyr::transmute(
+        surgeon_anon,
+        surgeon,
+        n = .data$n_cases,
+        p_unadjusted = .data$pval_unadjusted,
+        p_adjusted_PCA = .data$pval_adjusted,
+        p_multiple_comparison = .data$pval_adjusted_mc,
+        multiple_comparison_method,
+        r2_partial_kf = .data$r2_adjusted
+      )
+    readr::write_csv(csv_tbl, bonferroni_csv, na = "")
+    cat("Saved table CSV to", bonferroni_csv, "\n")
   } else {
     cat("No surgeons with >= 20 cases and valid p-values found.\n")
   }

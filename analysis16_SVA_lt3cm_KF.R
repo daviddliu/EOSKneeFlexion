@@ -113,8 +113,8 @@ create_plot <- function(data, x_var, y_var, x_label, y_label, title, filename) {
       hjust = 1.1, vjust = 1.5, size = 4, fontface = "bold"
     )
 
-  if (!dir.exists("results")) dir.create("results")
-  filepath <- file.path("results", filename)
+  if (!dir.exists("planned_results")) dir.create("planned_results")
+  filepath <- file.path("planned_results", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved plot to", filepath, "\n"))
   invisible(p)

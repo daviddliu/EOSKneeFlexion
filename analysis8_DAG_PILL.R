@@ -21,14 +21,22 @@ EXCLUDE_LOW_VOLUME_SURGEONS <- FALSE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+df <- attach_planned_dll(df, db_path)
 
 # Filter out low-volume surgeons if enabled
 if (EXCLUDE_LOW_VOLUME_SURGEONS) {
   df <- filter_low_volume_surgeons(df, min_surgeon_cases = 10)
 }
 
-# Calculate change in pi-ll mismatch using 6-week data
-df$change_PI_LL <- df$LAT6W_PI_LL - df$LATpre_PI_LL
+df <- restrict_planned_dll_analysis_cohort(df)
+cat(sprintf(
+  "\nCohort restricted to |preop PI–LL| > %d° and preop SVA C2–C7 < %d (non-missing): n = %d rows\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT,
+  nrow(df)
+))
+
+# Outcome: Planned \u0394LL (utils/planned_pi_ll.R)
 
 # Calculate T4-L1 PA
 if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
@@ -80,7 +88,7 @@ cat("=== STEP 1: DAG-Based Adjustment Set Selection ===\n\n")
 
 cat("Causal Structure Reasoning:\n")
 cat("  X (Exposure): Preoperative Knee Flexion (LATpre_LL_KneeAngle)\n")
-cat("  Y (Outcome): Change in Lumbar Lordosis (LAT6W_PI_LL - LATpre_PI_LL)\n\n")
+cat("  Y (Outcome): Planned \u0394LL (preop \u2212 planned PI\u2013LL)\n\n")
 
 cat("Potential Covariates:\n")
 cat("  - Preop PI-LL Mismatch (preop_PI_LL): CONFOUNDER (affects both X and Y)\n")
@@ -137,7 +145,9 @@ cat("\n")
 
 # Filter to complete cases
 df_clean <- df %>%
-  filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL))
+  filter(
+    !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP
+  )
 
 # Check availability of each adjustment variable
 for (var in adjustment_set) {
@@ -147,7 +157,7 @@ for (var in adjustment_set) {
 }
 
 # Create complete case dataset
-complete_vars <- c("LATpre_LL_KneeAngle", "change_PI_LL", adjustment_set)
+complete_vars <- c("LATpre_LL_KneeAngle", "planned_DLL", adjustment_set)
 df_complete <- df_clean %>%
   filter(complete.cases(select(., all_of(complete_vars))))
 
@@ -165,7 +175,7 @@ cat("      AIPW/TMLE would provide doubly-robust estimates and better handle\n")
 cat("      potential model misspecification.\n\n")
 
 # Unadjusted model
-model_unadj <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_complete)
+model_unadj <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_complete)
 summary_unadj <- summary(model_unadj)
 coef_unadj <- summary_unadj$coefficients[2, 1]
 ci_unadj <- confint(model_unadj)[2, ]
@@ -177,7 +187,7 @@ cat(sprintf("  P-value: %.4e\n", p_unadj))
 cat(sprintf("  R²: %.4f\n\n", summary_unadj$r.squared))
 
 # Fully adjusted model
-formula_adj <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+formula_adj <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                 paste(adjustment_set, collapse = " + ")))
 model_adj <- lm(formula_adj, data = df_complete)
 summary_adj <- summary(model_adj)
@@ -195,7 +205,7 @@ attenuation <- abs((coef_unadj - coef_adj) / coef_unadj) * 100
 cat(sprintf("Effect Attenuation: %.2f%% reduction in coefficient magnitude\n\n", attenuation))
 
 # Model without knee flexion (to test if other parameters alone explain the variance)
-formula_no_kf <- as.formula(paste("change_PI_LL ~", paste(adjustment_set, collapse = " + ")))
+formula_no_kf <- as.formula(paste("planned_DLL ~", paste(adjustment_set, collapse = " + ")))
 model_no_kf <- lm(formula_no_kf, data = df_complete)
 summary_no_kf <- summary(model_no_kf)
 r2_no_kf <- summary_no_kf$r.squared
@@ -268,7 +278,7 @@ for (i in seq_along(blocks)) {
   cumulative_vars <- c(cumulative_vars, block$vars)
   
   if (length(cumulative_vars) > 0) {
-    formula_block <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+    formula_block <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                       paste(cumulative_vars, collapse = " + ")))
     model_block <- lm(formula_block, data = df_complete)
     summary_block <- summary(model_block)
@@ -322,10 +332,10 @@ for (i in seq_along(adjustment_set)) {
   # Model without this covariate
   vars_without <- adjustment_set[-i]
   if (length(vars_without) > 0) {
-    formula_drop <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+    formula_drop <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                      paste(vars_without, collapse = " + ")))
   } else {
-    formula_drop <- as.formula("change_PI_LL ~ LATpre_LL_KneeAngle")
+    formula_drop <- as.formula("planned_DLL ~ LATpre_LL_KneeAngle")
   }
   
   model_drop <- lm(formula_drop, data = df_complete)
@@ -382,11 +392,11 @@ for (i in seq_along(adjustment_set)) {
   label <- adjustment_labels[i]
   
   # Calculate contribution when added to base model
-  formula_base <- as.formula("change_PI_LL ~ LATpre_LL_KneeAngle")
+  formula_base <- as.formula("planned_DLL ~ LATpre_LL_KneeAngle")
   model_base <- lm(formula_base, data = df_complete)
   r2_base <- summary(model_base)$r.squared
   
-  formula_with <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", var))
+  formula_with <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", var))
   model_with <- lm(formula_with, data = df_complete)
   r2_with <- summary(model_with)$r.squared
   
@@ -406,12 +416,12 @@ for (i in seq_along(adjustment_set)) {
       n_other <- sample(0:min(length(other_vars), 4), 1)
       if (n_other > 0) {
         subset_vars <- sample(other_vars, n_other)
-        formula_subset <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+        formula_subset <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                           paste(subset_vars, collapse = " + ")))
         model_subset <- lm(formula_subset, data = df_complete)
         r2_subset <- summary(model_subset)$r.squared
         
-        formula_subset_with <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+        formula_subset_with <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                                 paste(c(subset_vars, var), collapse = " + ")))
         model_subset_with <- lm(formula_subset_with, data = df_complete)
         r2_subset_with <- summary(model_subset_with)$r.squared
@@ -608,12 +618,10 @@ cat("\n")
 # ============================================================================
 cat("=== Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
-}
+pr_dir <- ensure_planned_results_dir()
 
 # Plot 1: Block-wise sequential adjustment
-png("results/analysis8_blockwise_adjustment.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis8_blockwise_adjustment.png"), width = 12, height = 8, units = "in", res = 300)
 p1 <- ggplot(block_results_df, aes(x = Block_Number, y = KF_Coefficient)) +
   geom_point(size = 3, color = "steelblue") +
   geom_errorbar(aes(ymin = KF_CI_Lower, ymax = KF_CI_Upper), width = 0.2, color = "steelblue") +
@@ -637,10 +645,10 @@ p1 <- ggplot(block_results_df, aes(x = Block_Number, y = KF_Coefficient)) +
 
 print(p1)
 dev.off()
-cat("Saved block-wise adjustment plot to results/analysis8_blockwise_adjustment.png\n")
+cat("Saved block-wise adjustment plot to planned_results/analysis8_blockwise_adjustment.png\n")
 
 # Plot 2: Drop-one analysis
-png("results/analysis8_drop_one_analysis.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis8_drop_one_analysis.png"), width = 12, height = 8, units = "in", res = 300)
 p2 <- ggplot(drop_one_df, aes(x = reorder(Covariate, abs(KF_Coefficient_Change_Pct)), 
                                y = KF_Coefficient_Change_Pct)) +
   geom_bar(stat = "identity", fill = "coral", alpha = 0.7) +
@@ -664,10 +672,10 @@ p2 <- ggplot(drop_one_df, aes(x = reorder(Covariate, abs(KF_Coefficient_Change_P
 
 print(p2)
 dev.off()
-cat("Saved drop-one analysis plot to results/analysis8_drop_one_analysis.png\n")
+cat("Saved drop-one analysis plot to planned_results/analysis8_drop_one_analysis.png\n")
 
 # Plot 3: Dominance analysis
-png("results/analysis8_dominance_analysis.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis8_dominance_analysis.png"), width = 12, height = 8, units = "in", res = 300)
 p3 <- ggplot(dominance_df, aes(x = reorder(Covariate, Average_R2_Contribution), 
                                 y = Average_R2_Contribution)) +
   geom_bar(stat = "identity", fill = "purple", alpha = 0.7) +
@@ -692,10 +700,10 @@ p3 <- ggplot(dominance_df, aes(x = reorder(Covariate, Average_R2_Contribution),
 
 print(p3)
 dev.off()
-cat("Saved dominance analysis plot to results/analysis8_dominance_analysis.png\n")
+cat("Saved dominance analysis plot to planned_results/analysis8_dominance_analysis.png\n")
 
 # Plot 4: Balance diagnostics
-png("results/analysis8_balance_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis8_balance_diagnostics.png"), width = 12, height = 8, units = "in", res = 300)
 balance_long <- balance_df %>%
   select(Covariate, SMD_Low_vs_High, SMD_Medium_vs_High, SMD_Low_vs_Medium) %>%
   pivot_longer(cols = starts_with("SMD"), names_to = "Comparison", values_to = "SMD") %>%
@@ -722,10 +730,10 @@ p4 <- ggplot(balance_long, aes(x = reorder(Covariate, abs(SMD)), y = SMD, fill =
 
 print(p4)
 dev.off()
-cat("Saved balance diagnostics plot to results/analysis8_balance_diagnostics.png\n")
+cat("Saved balance diagnostics plot to planned_results/analysis8_balance_diagnostics.png\n")
 
 # Plot 5: Overlap diagnostics
-png("results/analysis8_overlap_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis8_overlap_diagnostics.png"), width = 12, height = 8, units = "in", res = 300)
 overlap_long <- overlap_df %>%
   select(Covariate, Overlap_Low, Overlap_High, Overlap_Overall) %>%
   pivot_longer(cols = starts_with("Overlap"), names_to = "Group", values_to = "Overlap") %>%
@@ -757,18 +765,18 @@ p5 <- ggplot(overlap_long, aes(x = reorder(Covariate, Overlap), y = Overlap, fil
 
 print(p5)
 dev.off()
-cat("Saved overlap diagnostics plot to results/analysis8_overlap_diagnostics.png\n")
+cat("Saved overlap diagnostics plot to planned_results/analysis8_overlap_diagnostics.png\n")
 
 # ============================================================================
 # SAVE RESULTS
 # ============================================================================
-write.csv(block_results_df, "results/analysis8_blockwise_results.csv", row.names = FALSE)
-write.csv(drop_one_df, "results/analysis8_drop_one_results.csv", row.names = FALSE)
-write.csv(dominance_df, "results/analysis8_dominance_results.csv", row.names = FALSE)
-write.csv(balance_df, "results/analysis8_balance_results.csv", row.names = FALSE)
-write.csv(overlap_df, "results/analysis8_overlap_results.csv", row.names = FALSE)
+write.csv(block_results_df, file.path(pr_dir, "analysis8_blockwise_results.csv"), row.names = FALSE)
+write.csv(drop_one_df, file.path(pr_dir, "analysis8_drop_one_results.csv"), row.names = FALSE)
+write.csv(dominance_df, file.path(pr_dir, "analysis8_dominance_results.csv"), row.names = FALSE)
+write.csv(balance_df, file.path(pr_dir, "analysis8_balance_results.csv"), row.names = FALSE)
+write.csv(overlap_df, file.path(pr_dir, "analysis8_overlap_results.csv"), row.names = FALSE)
 
-cat("\nSaved all results tables to results/ directory\n")
+cat("\nSaved all results tables to planned_results/ directory\n")
 
 # ============================================================================
 # SUMMARY

@@ -324,8 +324,8 @@ if (abs(r_partial) < abs(r_kf_lordosis) * 0.7) {
 # ============================================================================
 # VISUALIZATION: Create plots
 # ============================================================================
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Plot 1: Unadjusted relationship
@@ -351,8 +351,8 @@ p1 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = change_lordosis)) +
     hjust = 1.1, vjust = 1.5, size = 3.5, fontface = "bold"
   )
 
-ggsave("results/analysis4_unadjusted.png", plot = p1, width = 8, height = 6, dpi = 300)
-cat("\nSaved unadjusted plot to results/analysis4_unadjusted.png\n")
+ggsave("planned_results/analysis4_unadjusted.png", plot = p1, width = 8, height = 6, dpi = 300)
+cat("\nSaved unadjusted plot to planned_results/analysis4_unadjusted.png\n")
 
 # Plot 2: Residuals from full model (excluding knee flexion) vs Knee Flexion
 # This shows the relationship between knee flexion and lordosis AFTER removing effects of all other covariates
@@ -388,8 +388,8 @@ p2 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_covariates)) 
     hjust = 1.1, vjust = 1.5, size = 3.5, fontface = "bold"
   )
 
-ggsave("results/analysis4_adjusted.png", plot = p2, width = 8, height = 6, dpi = 300)
-cat("Saved adjusted (residual) plot to results/analysis4_adjusted.png\n")
+ggsave("planned_results/analysis4_adjusted.png", plot = p2, width = 8, height = 6, dpi = 300)
+cat("Saved adjusted (residual) plot to planned_results/analysis4_adjusted.png\n")
 
 # Plot 3: Comparison of coefficients
 coef_df <- data.frame(
@@ -421,8 +421,8 @@ p3 <- ggplot(coef_df, aes(x = Model, y = Coefficient)) +
     vjust = -1.5, size = 3
   )
 
-ggsave("results/analysis4_coefficient_comparison.png", plot = p3, width = 8, height = 6, dpi = 300)
-cat("Saved coefficient comparison plot to results/analysis4_coefficient_comparison.png\n")
+ggsave("planned_results/analysis4_coefficient_comparison.png", plot = p3, width = 8, height = 6, dpi = 300)
+cat("Saved coefficient comparison plot to planned_results/analysis4_coefficient_comparison.png\n")
 
 cat("\n=== Analysis Complete ===\n")
 cat("Check the plots and statistics above to evaluate if PI-LL mismatch is a confounder (using 6-week follow-up data).\n")

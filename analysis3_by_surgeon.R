@@ -1,4 +1,7 @@
 #!/usr/bin/env Rscript
+# Per-surgeon preop KF vs 6-week ΔL1–S1 lordosis (+ PCA). For planned ΔLL (planned_DLL), use analysis3_by_surgeon_PILL.R.
+#
+# Plot titles: "Surgeon: surgeon {k}"; PNGs use analysis3_surgeon_###_*.png (k by decreasing cohort size).
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -17,7 +20,7 @@ source("utils/utils.R")
 EXCLUDE_PJK <- TRUE
 
 # Check if cache exists - if so, skip database loading
-cache_file <- "results/analysis3_PCA_significance_tracking_cache.rds"
+cache_file <- "planned_results/analysis3_PCA_significance_tracking_cache.rds"
 if (file.exists(cache_file)) {
   cat("\n=== Cache found - skipping database load ===\n")
   load_database <- FALSE
@@ -85,14 +88,19 @@ if (load_database) {
     cat("Warning: demo_site_txt column not found. Patients with missing surgeon will be excluded.\n")
   }
 
-  # Get unique surgeons (now includes imputed site-based groups)
-  surgeons <- unique(df$SxI_Gen_Surgeon)
-  surgeons <- surgeons[!is.na(surgeons)]
+  # Anon IDs: surgeon 1 = largest cohort, ... last = smallest (ties: alphabetical name)
+  surgeons <- df %>%
+    filter(!is.na(SxI_Gen_Surgeon)) %>%
+    mutate(sx = as.character(SxI_Gen_Surgeon)) %>%
+    filter(nzchar(sx)) %>%
+    count(sx, name = "n_patients") %>%
+    arrange(desc(n_patients), sx) %>%
+    pull(sx)
   cat(paste("Found", length(surgeons), "surgeon/site groups\n"))
 }
 
 # Function for Analysis 1: Preop knee flexion vs change in lordosis
-analysis1_by_surgeon <- function(data, surgeon_name) {
+analysis1_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Calculate change in lordosis using 6-week data
   data$change_lordosis <- data$LAT6W_L1_S1 - data$LATpre_L1_S1
   
@@ -135,7 +143,7 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
     labs(
       x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
       y = "Change in Lordosis (LAT6W_L1_S1 - LATpre_L1_S1, 6-week)",
-      title = paste0("Preoperative Knee Flexion vs Change in Lordosis (6-week)\nSurgeon: ", surgeon_name),
+      title = paste0("Preoperative Knee Flexion vs Change in Lordosis (6-week)\nSurgeon: surgeon ", surgeon_idx),
       subtitle = paste0("n = ", nrow(data_clean))
     ) +
     theme_minimal() +
@@ -162,15 +170,14 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
+  if (!dir.exists("planned_results/by_surgeon")) {
+    dir.create("planned_results/by_surgeon")
   }
-  safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis1.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filename <- paste0("analysis3_surgeon_", sprintf("%03d", surgeon_idx), "_analysis1.png")
+  filepath <- file.path("planned_results/by_surgeon", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 1 for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -178,7 +185,7 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
 }
 
 # Function for Analysis 2: PI-LL mismatch vs knee flexion measures
-analysis2_by_surgeon <- function(data, surgeon_name) {
+analysis2_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Drop patients with missing PI-LL data (using 6-week data)
   data_filtered <- data %>%
     filter(!is.na(LAT6W_PI_LL))
@@ -192,8 +199,8 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
   # Note: If either value is missing, knee_angle_diff will be NA (dropped in each plot)
   data_filtered$knee_angle_diff <- data_filtered$LAT6W_LL_KneeAngle - data_filtered$LATpre_LL_KneeAngle
   
-  safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  
+  anon_file_id <- sprintf("%03d", surgeon_idx)
+
   # Helper function to create plot
   create_plot <- function(data, x_var, y_var, x_label, y_label, title_suffix, plot_num) {
     # Drop patients with missing data for this specific variable pair (listwise deletion)
@@ -236,7 +243,7 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
       labs(
         x = x_label,
         y = y_label,
-        title = paste0(title_suffix, " vs PI-LL Mismatch (6-week)\nSurgeon: ", surgeon_name),
+        title = paste0(title_suffix, " vs PI-LL Mismatch (6-week)\nSurgeon: surgeon ", surgeon_idx),
         subtitle = paste0("n = ", nrow(data_clean))
       ) +
       theme_minimal() +
@@ -263,14 +270,14 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
     )
     
     # Save plot
-    if (!dir.exists("results")) {
-      dir.create("results")
+    if (!dir.exists("planned_results")) {
+      dir.create("planned_results")
     }
-    if (!dir.exists("results/by_surgeon")) {
-      dir.create("results/by_surgeon")
+    if (!dir.exists("planned_results/by_surgeon")) {
+      dir.create("planned_results/by_surgeon")
     }
-    filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis2_", plot_num, ".png")
-    filepath <- file.path("results/by_surgeon", filename)
+    filename <- paste0("analysis3_surgeon_", anon_file_id, "_analysis2_", plot_num, ".png")
+    filepath <- file.path("planned_results/by_surgeon", filename)
     ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
     cat(paste("Saved Analysis 2, Plot", plot_num, "for surgeon", surgeon_name, "to", filepath, "\n"))
     
@@ -312,7 +319,7 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
 }
 
 # Function for Analysis 4: PCA-based confounder analysis (preop knee flexion adjusted for PCA components)
-analysis4_by_surgeon <- function(data, surgeon_name) {
+analysis4_by_surgeon <- function(data, surgeon_name, surgeon_idx) {
   # Calculate change in lordosis using 6-week data
   data$change_lordosis <- data$LAT6W_L1_S1 - data$LATpre_L1_S1
   
@@ -526,7 +533,7 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     labs(
       x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
       y = paste0("Residuals from PCA Covariates Model\n(Change in Lordosis after removing effects of ", n_components_used, ")"),
-      title = paste0("PCA-Based Confounder Analysis (6-week follow-up)\nSurgeon: ", surgeon_name),
+      title = paste0("PCA-Based Confounder Analysis (6-week follow-up)\nSurgeon: surgeon ", surgeon_idx),
       subtitle = paste0("Adjusted relationship (n = ", nrow(data_clean), ")")
     ) +
     theme_minimal() +
@@ -546,15 +553,14 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
+  if (!dir.exists("planned_results/by_surgeon")) {
+    dir.create("planned_results/by_surgeon")
   }
-  safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
-  filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis4_PCA.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filename <- paste0("analysis3_surgeon_", sprintf("%03d", surgeon_idx), "_analysis4_PCA.png")
+  filepath <- file.path("planned_results/by_surgeon", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 4 (PCA) for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -584,8 +590,9 @@ if (run_analyses) {
     stop("Error: Database not loaded but cache not found. Cannot proceed.")
   }
   # Loop through each surgeon and perform all analyses
-  for (surgeon in surgeons) {
-    cat(paste("\n=== Processing surgeon:", surgeon, "===\n"))
+  for (surgeon_idx in seq_along(surgeons)) {
+    surgeon <- surgeons[surgeon_idx]
+    cat(sprintf("\n=== Processing surgeon: %s (plot title: surgeon %d) ===\n", surgeon, surgeon_idx))
     
     # Filter data for current surgeon
     df_surgeon <- df %>%
@@ -594,21 +601,21 @@ if (run_analyses) {
     cat(paste("Surgeon", surgeon, "has", nrow(df_surgeon), "patients\n"))
     
     # Perform Analysis 1
-    analysis1_by_surgeon(df_surgeon, surgeon)
+    analysis1_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     
     # Perform Analysis 2
-    analysis2_by_surgeon(df_surgeon, surgeon)
+    analysis2_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     
     # Perform Analysis 4 and track results
-    result_analysis4 <- analysis4_by_surgeon(df_surgeon, surgeon)
+    result_analysis4 <- analysis4_by_surgeon(df_surgeon, surgeon, surgeon_idx)
     if (!is.null(result_analysis4)) {
       significance_tracking[[length(significance_tracking) + 1]] <- result_analysis4
     }
   }
   
   # Save results to cache
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
   saveRDS(significance_tracking, cache_file)
   cat(paste("\n=== Saved results to cache:", cache_file, "===\n"))
@@ -781,8 +788,8 @@ if (length(significance_tracking) > 0) {
     }
     
     # Prepare data for unified table
-    if (!dir.exists("results")) {
-      dir.create("results")
+    if (!dir.exists("planned_results")) {
+      dir.create("planned_results")
     }
     
     # Combine all surgeons into one table and anonymize
@@ -824,7 +831,7 @@ if (length(significance_tracking) > 0) {
     img_height <- max(8, img_height)  # Minimum 8 inches
     img_width <- 16  # Wider for BH columns on unadjusted and adjusted p-values
     
-    png("results/analysis3_PCA_BH_table.png", width = img_width, height = img_height, units = "in", res = 300)
+    png("planned_results/analysis3_PCA_BH_table.png", width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
     
     # Create title
@@ -874,10 +881,10 @@ if (length(significance_tracking) > 0) {
     
     dev.off()
     
-    cat("Saved formatted table image to results/analysis3_PCA_BH_table.png\n")
+    cat("Saved formatted table image to planned_results/analysis3_PCA_BH_table.png\n")
     
     if (requireNamespace("writexl", quietly = TRUE)) {
-      excel_path <- "results/by_surgeon_KF_lordosis_PCA_pvalues_BH.xlsx"
+      excel_path <- "planned_results/by_surgeon_KF_lordosis_PCA_pvalues_BH.xlsx"
       ex <- surgeons_gt20 %>%
         arrange(pval_unadjusted) %>%
         mutate(

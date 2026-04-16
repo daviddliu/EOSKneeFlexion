@@ -20,14 +20,32 @@ EXCLUDE_LOW_VOLUME_SURGEONS <- FALSE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+df <- attach_planned_dll(df, db_path)
 
 # Filter out low-volume surgeons if enabled
 if (EXCLUDE_LOW_VOLUME_SURGEONS) {
   df <- filter_low_volume_surgeons(df, min_surgeon_cases = 10)
 }
 
-# Calculate change in pi-ll mismatch using 6-week data
-df$change_PI_LL <- df$LAT6W_PI_LL - df$LATpre_PI_LL
+df <- restrict_planned_dll_analysis_cohort(df)
+cat(sprintf(
+  "\nCohort restricted to |preop PI–LL| > %d° and preop SVA C2–C7 < %d (non-missing): n = %d rows\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT,
+  nrow(df)
+))
+
+# PCA confounder: planned L1–S1 (PI − planned PI–LL), not preop L1–S1.
+if ("PI" %in% names(df)) {
+  df$planned_L1_S1 <- df$PI - df$planned_PI_LL
+} else if ("LATpre_S1PI" %in% names(df)) {
+  df$planned_L1_S1 <- df$LATpre_S1PI - df$planned_PI_LL
+  cat("Planned L1-S1 confounder: using LATpre_S1PI as PI (no PI column).\n")
+} else {
+  stop("analysis5_PCA_confounder_analysis_PILL.R: PI or LATpre_S1PI required for planned L1-S1.")
+}
+
+# Outcome: Planned \u0394LL (utils/planned_pi_ll.R)
 
 # Calculate T4-L1 PA
 if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
@@ -57,22 +75,30 @@ if ("demo_Age" %in% names(df)) {
 }
 
 # Drop patients with missing data for confounder analysis
-# Confounder set: S1PI (preop), Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA, Age
+# Confounder set: S1PI (preop), Planned L1-S1 (PI − planned PI–LL), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA, Age
 if (!is.null(age_var)) {
   df_clean <- df %>%
-    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL) & !is.na(LATpre_S1PI) &
-           !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-           !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) & 
-           !is.na(.data[[age_var]]))
+    filter(
+      !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP &
+        !is.na(LATpre_S1PI) &
+        !is.na(planned_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) &
+        !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA) &
+        !is.na(.data[[age_var]])
+    )
 } else {
   df_clean <- df %>%
-    filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL) & !is.na(LATpre_S1PI) &
-           !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-           !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+    filter(
+      !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP &
+        !is.na(LATpre_S1PI) &
+        !is.na(planned_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) &
+        !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA)
+    )
 }
 
-cat(paste("\n=== PCA-Based Confounder Analysis ===\n"))
-cat(paste("Sample size:", nrow(df_clean), "patients with complete data (using 6-week follow-up)\n\n"))
+cat(paste("\n=== PCA-Based Confounder Analysis (Planned \u0394LL outcome) ===\n"))
+cat(paste("Sample size:", nrow(df_clean), "patients with complete data\n\n"))
+
+pr_dir <- ensure_planned_results_dir()
 
 # ============================================================================
 # STEP 1: Prepare confounder variables for PCA
@@ -82,7 +108,7 @@ cat("=== STEP 1: Preparing Confounder Variables for PCA ===\n\n")
 # Select confounder variables (excluding knee flexion and outcome)
 confounder_vars <- c(
   "LATpre_S1PI",
-  "LATpre_L1_S1",
+  "planned_L1_S1",
   "LATpre_L4_S1",
   "LATpre_T2_T12",
   "LATpre_S1PT",
@@ -92,7 +118,7 @@ confounder_vars <- c(
 
 confounder_labels <- c(
   "S1PI (preop)",
-  "Lordosis L1-S1",
+  "Planned lordosis L1-S1 (PI - goal PI-LL)",
   "Lordosis L4-S1",
   "Thoracic Kyphosis T2-T12",
   "Pelvic Tilt S1PT",
@@ -252,7 +278,7 @@ for (n_comp in 1:min(7, length(cumulative_variance))) {
   }
   
   # Fit model
-  pca_formula_temp <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+  pca_formula_temp <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                        paste(paste0("PC", 1:n_comp), collapse = " + ")))
   model_temp <- lm(pca_formula_temp, data = df_temp)
   
@@ -404,7 +430,7 @@ for (i in 1:n_components_use) {
 
 # Model 1: Simple regression (knee flexion only)
 cat("Model 1: Simple Regression (Knee Flexion Only)\n")
-model1 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_pca)
+model1 <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_pca)
 summary1 <- summary(model1)
 cat(sprintf("  Knee Flexion coefficient: %.4f (p = %.4e)\n", 
             summary1$coefficients[2, 1], summary1$coefficients[2, 4]))
@@ -414,12 +440,12 @@ cat(sprintf("  Adjusted R²: %.4f\n\n", summary1$adj.r.squared))
 # Model 2: Multiple regression with original confounders (for comparison)
 cat("Model 2: Multiple Regression with Original Confounders\n")
 if (!is.null(age_var)) {
-  formula_str <- paste("change_PI_LL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 +",
+  formula_str <- paste("planned_DLL ~ LATpre_LL_KneeAngle + LATpre_S1PI + planned_L1_S1 +",
                        "LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 +",
                        "LATpre_T4_L1_PA +", age_var)
   model2 <- lm(as.formula(formula_str), data = df_pca)
 } else {
-  model2 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle + LATpre_S1PI + LATpre_L1_S1 + 
+  model2 <- lm(planned_DLL ~ LATpre_LL_KneeAngle + LATpre_S1PI + planned_L1_S1 + 
                LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, 
                data = df_pca)
 }
@@ -431,7 +457,7 @@ cat(sprintf("  Adjusted R²: %.4f\n\n", summary2$adj.r.squared))
 
 # Model 3: Multiple regression with PCA components
 cat(sprintf("Model 3: Multiple Regression with PCA Components (PC1-PC%d)\n", n_components_use))
-pca_formula <- as.formula(paste("change_PI_LL ~ LATpre_LL_KneeAngle +", 
+pca_formula <- as.formula(paste("planned_DLL ~ LATpre_LL_KneeAngle +", 
                                  paste(paste0("PC", 1:n_components_use), collapse = " + ")))
 model3 <- lm(pca_formula, data = df_pca)
 summary3 <- summary(model3)
@@ -537,12 +563,8 @@ if (all(vif_pca < 2.5)) {
 # ============================================================================
 cat("=== STEP 7: Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
-}
-
 # Plot 1: Scree plot
-png("results/analysis5_scree_plot.png", width = 10, height = 6, units = "in", res = 300)
+png(file.path(pr_dir, "analysis5_scree_plot.png"), width = 10, height = 6, units = "in", res = 300)
 scree_df <- data.frame(
   Component = 1:length(eigenvalues),
   Eigenvalue = eigenvalues,
@@ -570,10 +592,10 @@ p1 <- ggplot(scree_df, aes(x = Component, y = Eigenvalue)) +
 
 print(p1)
 dev.off()
-cat("Saved scree plot to results/analysis5_scree_plot.png\n")
+cat("Saved scree plot to planned_results/analysis5_scree_plot.png\n")
 
 # Plot 2: Variance explained
-png("results/analysis5_variance_explained.png", width = 10, height = 6, units = "in", res = 300)
+png(file.path(pr_dir, "analysis5_variance_explained.png"), width = 10, height = 6, units = "in", res = 300)
 variance_df <- data.frame(
   Component = 1:length(variance_explained),
   Variance = variance_explained * 100,
@@ -604,10 +626,10 @@ p2 <- ggplot(variance_df, aes(x = Component)) +
 
 print(p2)
 dev.off()
-cat("Saved variance explained plot to results/analysis5_variance_explained.png\n")
+cat("Saved variance explained plot to planned_results/analysis5_variance_explained.png\n")
 
 # Plot 3: Loadings heatmap
-png("results/analysis5_loadings_heatmap.png", width = 10, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis5_loadings_heatmap.png"), width = 10, height = 8, units = "in", res = 300)
 loadings_long <- loadings_df %>%
   rownames_to_column("Variable") %>%
   pivot_longer(cols = -Variable, names_to = "Component", values_to = "Loading")
@@ -632,10 +654,10 @@ p3 <- ggplot(loadings_long, aes(x = Component, y = Variable, fill = Loading)) +
 
 print(p3)
 dev.off()
-cat("Saved loadings heatmap to results/analysis5_loadings_heatmap.png\n")
+cat("Saved loadings heatmap to planned_results/analysis5_loadings_heatmap.png\n")
 
 # Plot 4: Model comparison
-png("results/analysis5_model_comparison.png", width = 10, height = 6, units = "in", res = 300)
+png(file.path(pr_dir, "analysis5_model_comparison.png"), width = 10, height = 6, units = "in", res = 300)
 coef_comparison <- data.frame(
   Model = comparison_df$Model,
   Coefficient = comparison_df$Knee_Flexion_Coef,
@@ -668,12 +690,12 @@ p4 <- ggplot(coef_comparison, aes(x = Model, y = Coefficient)) +
 
 print(p4)
 dev.off()
-cat("Saved model comparison plot to results/analysis5_model_comparison.png\n")
+cat("Saved model comparison plot to planned_results/analysis5_model_comparison.png\n")
 
 # Plot 5: Residual plot (similar to analysis4)
 # This shows the relationship between knee flexion and residuals after controlling for PCA components
 cat("\nCreating residual plot...\n")
-pca_formula_no_kf <- as.formula(paste("change_PI_LL ~", 
+pca_formula_no_kf <- as.formula(paste("planned_DLL ~", 
                                       paste(paste0("PC", 1:n_components_use), collapse = " + ")))
 covariates_model_pca <- lm(pca_formula_no_kf, data = df_pca)
 df_pca$resid_from_pca_covariates <- residuals(covariates_model_pca)
@@ -693,7 +715,7 @@ r2_full_pca <- summary3$r.squared
 r2_partial_pca <- r2_full_pca - r2_no_kf_pca
 
 # Create the plot
-png("results/analysis5_residual_plot.png", width = 10, height = 8, units = "in", res = 300)
+png(file.path(pr_dir, "analysis5_residual_plot.png"), width = 10, height = 8, units = "in", res = 300)
 p5 <- ggplot(df_pca, aes(x = LATpre_LL_KneeAngle, y = resid_from_pca_covariates)) +
   geom_point(alpha = 0.6, color = "darkgrey") +
   geom_smooth(method = "lm", se = TRUE, color = "blue", linetype = "solid") +
@@ -720,7 +742,7 @@ p5 <- ggplot(df_pca, aes(x = LATpre_LL_KneeAngle, y = resid_from_pca_covariates)
 
 print(p5)
 dev.off()
-cat("Saved residual plot to results/analysis5_residual_plot.png\n")
+cat("Saved residual plot to planned_results/analysis5_residual_plot.png\n")
 
 # ============================================================================
 # SUMMARY
@@ -766,5 +788,5 @@ cat("   ⚠  Requires understanding what each component represents\n")
 cat("   ⚠  May lose some information if too few components are used\n\n")
 
 cat("=== Analysis Complete ===\n")
-cat("Check the plots in results/ directory for visualizations.\n\n")
+cat("Check the plots in planned_results/ directory for visualizations.\n\n")
 

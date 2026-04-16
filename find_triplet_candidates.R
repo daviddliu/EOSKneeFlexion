@@ -222,10 +222,10 @@ output_df <- output_df %>%
          kf_change_spread, kf_change_min, kf_change_max, kf_change_mean)
 
 # Save to CSV
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
-output_file <- "results/triplet_candidates.csv"
+output_file <- "planned_results/triplet_candidates.csv"
 write.csv(output_df, output_file, row.names = FALSE)
 cat(sprintf("Saved detailed results to %s\n", output_file))
 cat(sprintf("Total triplets found: %d\n", length(all_triplets)))

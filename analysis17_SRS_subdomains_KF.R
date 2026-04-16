@@ -122,11 +122,11 @@ cat("\n=== SRS-22 subdomains vs |KF| — BY PREOP PT ===\n")
 cat("Bonferroni applied separately within each PT group (", nrow(out_low), " and ", nrow(out_high), " tests)\n\n", sep = "")
 print(as.data.frame(out_pt), row.names = FALSE, digits = 3)
 
-if (!dir.exists("results")) dir.create("results")
-readr::write_csv(out_all, "results/analysis17_SRS_subdomains_KF_summary.csv")
-readr::write_csv(out_pt, "results/analysis17_SRS_subdomains_KF_by_PT_summary.csv")
-cat("\nWrote results/analysis17_SRS_subdomains_KF_summary.csv\n")
-cat("Wrote results/analysis17_SRS_subdomains_KF_by_PT_summary.csv\n")
+if (!dir.exists("planned_results")) dir.create("planned_results")
+readr::write_csv(out_all, "planned_results/analysis17_SRS_subdomains_KF_summary.csv")
+readr::write_csv(out_pt, "planned_results/analysis17_SRS_subdomains_KF_by_PT_summary.csv")
+cat("\nWrote planned_results/analysis17_SRS_subdomains_KF_summary.csv\n")
+cat("Wrote planned_results/analysis17_SRS_subdomains_KF_by_PT_summary.csv\n")
 
 for (g in unique(out_pt$PT_group)) {
   sig <- out_pt %>% filter(PT_group == g, p_bonferroni < 0.05)

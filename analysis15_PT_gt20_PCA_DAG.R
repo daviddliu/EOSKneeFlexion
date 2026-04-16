@@ -275,9 +275,9 @@ cat(sprintf("Model 3 KF: beta = %.4f, p = %.4e, R2 = %.4f\n\n",
 print(comparison_df, row.names = FALSE)
 cat("\n")
 
-if (!dir.exists("results")) dir.create("results")
+if (!dir.exists("planned_results")) dir.create("planned_results")
 
-png("results/analysis15_scree_plot.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis15_scree_plot.png", width = 10, height = 6, units = "in", res = 300)
 scree_df <- data.frame(
   Component = seq_along(eigenvalues),
   Eigenvalue = eigenvalues,
@@ -295,7 +295,7 @@ print(
 )
 dev.off()
 
-png("results/analysis15_variance_explained.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis15_variance_explained.png", width = 10, height = 6, units = "in", res = 300)
 variance_df <- data.frame(
   Component = seq_along(variance_explained),
   Variance = variance_explained * 100,
@@ -312,7 +312,7 @@ print(
 )
 dev.off()
 
-png("results/analysis15_loadings_heatmap.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis15_loadings_heatmap.png", width = 10, height = 8, units = "in", res = 300)
 loadings_long <- loadings_df %>%
   rownames_to_column("Variable") %>%
   pivot_longer(cols = -Variable, names_to = "Component", values_to = "Loading")
@@ -332,7 +332,7 @@ coef_comparison <- data.frame(
   Upper_CI = c(confint(model1)[2, 2], confint(model2)[2, 2], confint(model3)[2, 2]),
   P_value = comparison_df$Knee_Flexion_P
 )
-png("results/analysis15_model_comparison.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis15_model_comparison.png", width = 10, height = 6, units = "in", res = 300)
 print(
   ggplot(coef_comparison, aes(x = Model, y = Coefficient)) +
     geom_point(size = 3, color = "red") +
@@ -353,7 +353,7 @@ df_residual_pca <- summary3$df[2]
 r_partial_pca <- t_stat_kf_pca / sqrt(t_stat_kf_pca^2 + df_residual_pca)
 r2_partial_pca <- summary3$r.squared - summary(covariates_model_pca)$r.squared
 
-png("results/analysis15_residual_plot.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis15_residual_plot.png", width = 10, height = 8, units = "in", res = 300)
 print(
   ggplot(df_pca, aes(x = LATpre_LL_KneeAngle, y = resid_from_pca_covariates)) +
     geom_point(alpha = 0.6) +
@@ -377,7 +377,7 @@ print(
 )
 dev.off()
 
-cat("Saved PCA plots under results/analysis15_*.png\n\n")
+cat("Saved PCA plots under planned_results/analysis15_*.png\n\n")
 
 # ==============================================================================
 # Part B: DAG adjustment set (mirrors analysis8_DAG.R core regression)

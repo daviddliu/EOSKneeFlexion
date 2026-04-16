@@ -608,12 +608,12 @@ cat("\n")
 # ============================================================================
 cat("=== Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Plot 1: Block-wise sequential adjustment
-png("results/analysis8_blockwise_adjustment.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis8_blockwise_adjustment.png", width = 12, height = 8, units = "in", res = 300)
 p1 <- ggplot(block_results_df, aes(x = Block_Number, y = KF_Coefficient)) +
   geom_point(size = 3, color = "steelblue") +
   geom_errorbar(aes(ymin = KF_CI_Lower, ymax = KF_CI_Upper), width = 0.2, color = "steelblue") +
@@ -637,10 +637,10 @@ p1 <- ggplot(block_results_df, aes(x = Block_Number, y = KF_Coefficient)) +
 
 print(p1)
 dev.off()
-cat("Saved block-wise adjustment plot to results/analysis8_blockwise_adjustment.png\n")
+cat("Saved block-wise adjustment plot to planned_results/analysis8_blockwise_adjustment.png\n")
 
 # Plot 2: Drop-one analysis
-png("results/analysis8_drop_one_analysis.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis8_drop_one_analysis.png", width = 12, height = 8, units = "in", res = 300)
 p2 <- ggplot(drop_one_df, aes(x = reorder(Covariate, abs(KF_Coefficient_Change_Pct)), 
                                y = KF_Coefficient_Change_Pct)) +
   geom_bar(stat = "identity", fill = "coral", alpha = 0.7) +
@@ -664,10 +664,10 @@ p2 <- ggplot(drop_one_df, aes(x = reorder(Covariate, abs(KF_Coefficient_Change_P
 
 print(p2)
 dev.off()
-cat("Saved drop-one analysis plot to results/analysis8_drop_one_analysis.png\n")
+cat("Saved drop-one analysis plot to planned_results/analysis8_drop_one_analysis.png\n")
 
 # Plot 3: Dominance analysis
-png("results/analysis8_dominance_analysis.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis8_dominance_analysis.png", width = 12, height = 8, units = "in", res = 300)
 p3 <- ggplot(dominance_df, aes(x = reorder(Covariate, Average_R2_Contribution), 
                                 y = Average_R2_Contribution)) +
   geom_bar(stat = "identity", fill = "purple", alpha = 0.7) +
@@ -692,10 +692,10 @@ p3 <- ggplot(dominance_df, aes(x = reorder(Covariate, Average_R2_Contribution),
 
 print(p3)
 dev.off()
-cat("Saved dominance analysis plot to results/analysis8_dominance_analysis.png\n")
+cat("Saved dominance analysis plot to planned_results/analysis8_dominance_analysis.png\n")
 
 # Plot 4: Balance diagnostics
-png("results/analysis8_balance_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis8_balance_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
 balance_long <- balance_df %>%
   select(Covariate, SMD_Low_vs_High, SMD_Medium_vs_High, SMD_Low_vs_Medium) %>%
   pivot_longer(cols = starts_with("SMD"), names_to = "Comparison", values_to = "SMD") %>%
@@ -722,10 +722,10 @@ p4 <- ggplot(balance_long, aes(x = reorder(Covariate, abs(SMD)), y = SMD, fill =
 
 print(p4)
 dev.off()
-cat("Saved balance diagnostics plot to results/analysis8_balance_diagnostics.png\n")
+cat("Saved balance diagnostics plot to planned_results/analysis8_balance_diagnostics.png\n")
 
 # Plot 5: Overlap diagnostics
-png("results/analysis8_overlap_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis8_overlap_diagnostics.png", width = 12, height = 8, units = "in", res = 300)
 overlap_long <- overlap_df %>%
   select(Covariate, Overlap_Low, Overlap_High, Overlap_Overall) %>%
   pivot_longer(cols = starts_with("Overlap"), names_to = "Group", values_to = "Overlap") %>%
@@ -757,18 +757,18 @@ p5 <- ggplot(overlap_long, aes(x = reorder(Covariate, Overlap), y = Overlap, fil
 
 print(p5)
 dev.off()
-cat("Saved overlap diagnostics plot to results/analysis8_overlap_diagnostics.png\n")
+cat("Saved overlap diagnostics plot to planned_results/analysis8_overlap_diagnostics.png\n")
 
 # ============================================================================
 # SAVE RESULTS
 # ============================================================================
-write.csv(block_results_df, "results/analysis8_blockwise_results.csv", row.names = FALSE)
-write.csv(drop_one_df, "results/analysis8_drop_one_results.csv", row.names = FALSE)
-write.csv(dominance_df, "results/analysis8_dominance_results.csv", row.names = FALSE)
-write.csv(balance_df, "results/analysis8_balance_results.csv", row.names = FALSE)
-write.csv(overlap_df, "results/analysis8_overlap_results.csv", row.names = FALSE)
+write.csv(block_results_df, "planned_results/analysis8_blockwise_results.csv", row.names = FALSE)
+write.csv(drop_one_df, "planned_results/analysis8_drop_one_results.csv", row.names = FALSE)
+write.csv(dominance_df, "planned_results/analysis8_dominance_results.csv", row.names = FALSE)
+write.csv(balance_df, "planned_results/analysis8_balance_results.csv", row.names = FALSE)
+write.csv(overlap_df, "planned_results/analysis8_overlap_results.csv", row.names = FALSE)
 
-cat("\nSaved all results tables to results/ directory\n")
+cat("\nSaved all results tables to planned_results/ directory\n")
 
 # ============================================================================
 # SUMMARY

@@ -17,7 +17,7 @@ source("utils/utils.R")
 EXCLUDE_PJK <- TRUE
 
 # Check if cache exists - if so, skip database loading
-cache_file <- "results/analysis3_PCA_significance_tracking_cache.rds"
+cache_file <- "planned_results/analysis3_PCA_significance_tracking_cache.rds"
 if (file.exists(cache_file)) {
   cat("\n=== Cache found - skipping database load ===\n")
   load_database <- FALSE
@@ -162,15 +162,15 @@ analysis1_by_surgeon <- function(data, surgeon_name) {
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
+  if (!dir.exists("planned_results/by_surgeon")) {
+    dir.create("planned_results/by_surgeon")
   }
   safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
   filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis1.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filepath <- file.path("planned_results/by_surgeon", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 1 for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -263,14 +263,14 @@ analysis2_by_surgeon <- function(data, surgeon_name) {
     )
     
     # Save plot
-    if (!dir.exists("results")) {
-      dir.create("results")
+    if (!dir.exists("planned_results")) {
+      dir.create("planned_results")
     }
-    if (!dir.exists("results/by_surgeon")) {
-      dir.create("results/by_surgeon")
+    if (!dir.exists("planned_results/by_surgeon")) {
+      dir.create("planned_results/by_surgeon")
     }
     filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis2_", plot_num, ".png")
-    filepath <- file.path("results/by_surgeon", filename)
+    filepath <- file.path("planned_results/by_surgeon", filename)
     ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
     cat(paste("Saved Analysis 2, Plot", plot_num, "for surgeon", surgeon_name, "to", filepath, "\n"))
     
@@ -546,15 +546,15 @@ analysis4_by_surgeon <- function(data, surgeon_name) {
     )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
-  if (!dir.exists("results/by_surgeon")) {
-    dir.create("results/by_surgeon")
+  if (!dir.exists("planned_results/by_surgeon")) {
+    dir.create("planned_results/by_surgeon")
   }
   safe_surgeon_name <- gsub("[^A-Za-z0-9_]", "_", surgeon_name)
   filename <- paste0("analysis3_surgeon_", safe_surgeon_name, "_analysis4_PCA.png")
-  filepath <- file.path("results/by_surgeon", filename)
+  filepath <- file.path("planned_results/by_surgeon", filename)
   ggsave(filepath, plot = p, width = 10, height = 8, dpi = 300)
   cat(paste("Saved Analysis 4 (PCA) for surgeon", surgeon_name, "to", filepath, "\n"))
   
@@ -607,8 +607,8 @@ if (run_analyses) {
   }
   
   # Save results to cache
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
   saveRDS(significance_tracking, cache_file)
   cat(paste("\n=== Saved results to cache:", cache_file, "===\n"))
@@ -773,8 +773,8 @@ if (length(significance_tracking) > 0) {
     }
     
     # Prepare data for unified table
-    if (!dir.exists("results")) {
-      dir.create("results")
+    if (!dir.exists("planned_results")) {
+      dir.create("planned_results")
     }
     
     # Combine all surgeons into one table and anonymize
@@ -809,7 +809,7 @@ if (length(significance_tracking) > 0) {
     img_height <- max(8, img_height)  # Minimum 8 inches
     img_width <- 14  # Adequate width for the columns
     
-    png("results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
+    png("planned_results/analysis3_PCA_bonferroni_table.png", width = img_width, height = img_height, units = "in", res = 300)
     grid.newpage()
     
     # Create title
@@ -859,7 +859,7 @@ if (length(significance_tracking) > 0) {
     
     dev.off()
     
-    cat("Saved formatted table image to results/analysis3_PCA_bonferroni_table.png\n")
+    cat("Saved formatted table image to planned_results/analysis3_PCA_bonferroni_table.png\n")
   } else {
     cat("No surgeons with >= 20 cases and valid p-values found.\n")
   }

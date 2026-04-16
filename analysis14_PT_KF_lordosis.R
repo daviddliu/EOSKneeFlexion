@@ -1,10 +1,13 @@
 #!/usr/bin/env Rscript
 #
-# Analysis 14: PT vs Change in Lordosis, with and without KF
+# Analysis 14: PT vs planned ΔLL (planned_DLL), with and without KF
 #
 # This script compares:
-#   Model 1: Change in Lordosis ~ Pelvic Tilt (PT only)
-#   Model 2: Change in Lordosis ~ Pelvic Tilt + Knee Flexion (PT + KF)
+#   Model 1: Planned ΔLL ~ Pelvic Tilt (PT only)
+#   Model 2: Planned ΔLL ~ Pelvic Tilt + Knee Flexion (PT + KF)
+#
+# Outcome planned_DLL = LATpre_PI_LL − planned_PI_LL (see utils/planned_pi_ll.R).
+# Cohort matches other planned_DLL scripts (restrict_planned_dll_analysis_cohort).
 #
 # Hypothesis: Adding KF should not dramatically improve the model fit,
 #             suggesting PT is the primary predictor.
@@ -26,23 +29,33 @@ EXCLUDE_PJK <- TRUE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
-
-# Calculate change in lordosis using 6-week data
-df$change_lordosis <- df$LAT6W_L1_S1 - df$LATpre_L1_S1
+df <- attach_planned_dll(df, db_path)
+df <- restrict_planned_dll_analysis_cohort(df)
 
 # Drop patients with missing data
 df_clean <- df %>%
-  filter(!is.na(LATpre_S1PT) & !is.na(LATpre_LL_KneeAngle) & !is.na(change_lordosis))
+  filter(
+    !is.na(LATpre_S1PT),
+    !is.na(LATpre_LL_KneeAngle),
+    !is.na(planned_DLL),
+    planned_DLL >= PLANNED_DLL_MIN_KEEP
+  )
 
-cat(paste("\n=== Analysis 14: PT vs Change in Lordosis (with and without KF) ===\n"))
-cat(paste("Sample size:", nrow(df_clean), "patients with complete data (using 6-week follow-up)\n\n"))
+cat(paste("\n=== Analysis 14: PT vs planned ΔLL (with and without KF) ===\n"))
+cat(sprintf(
+  "Cohort: |preop PI–LL| > %d°, preop SVA C2–C7 < %d (non-missing); planned_DLL ≥ %d°\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT,
+  PLANNED_DLL_MIN_KEEP
+))
+cat(paste("Sample size:", nrow(df_clean), "patients with complete data\n\n"))
 
 # ============================================================================
 # Model 1: Simple regression (PT only)
 # ============================================================================
-cat("=== Model 1: Change in Lordosis ~ Pelvic Tilt (PT only) ===\n\n")
+cat("=== Model 1: Planned ΔLL ~ Pelvic Tilt (PT only) ===\n\n")
 
-model1 <- lm(change_lordosis ~ LATpre_S1PT, data = df_clean)
+model1 <- lm(planned_DLL ~ LATpre_S1PT, data = df_clean)
 summary1 <- summary(model1)
 
 cat("Regression Results:\n")
@@ -56,15 +69,15 @@ cat(sprintf("  Adjusted R²: %.4f\n", summary1$adj.r.squared))
 cat(sprintf("  Residual SE: %.4f\n", summary1$sigma))
 
 # Calculate correlation
-r_pt_lordosis <- cor(df_clean$LATpre_S1PT, df_clean$change_lordosis, use = "complete.obs")
-cat(sprintf("  Pearson r: %.4f\n\n", r_pt_lordosis))
+r_pt_outcome <- cor(df_clean$LATpre_S1PT, df_clean$planned_DLL, use = "complete.obs")
+cat(sprintf("  Pearson r: %.4f\n\n", r_pt_outcome))
 
 # ============================================================================
 # Model 2: Multiple regression (PT + KF)
 # ============================================================================
-cat("=== Model 2: Change in Lordosis ~ Pelvic Tilt + Knee Flexion (PT + KF) ===\n\n")
+cat("=== Model 2: Planned ΔLL ~ Pelvic Tilt + Knee Flexion (PT + KF) ===\n\n")
 
-model2 <- lm(change_lordosis ~ LATpre_S1PT + LATpre_LL_KneeAngle, data = df_clean)
+model2 <- lm(planned_DLL ~ LATpre_S1PT + LATpre_LL_KneeAngle, data = df_clean)
 summary2 <- summary(model2)
 
 cat("Regression Results:\n")
@@ -130,19 +143,19 @@ cat("\n")
 # ============================================================================
 cat("=== Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
-# Plot 1: PT vs Change in Lordosis (Model 1)
-png("results/analysis14_PT_vs_change_lordosis.png", width = 10, height = 8, units = "in", res = 300)
-p1 <- ggplot(df_clean, aes(x = LATpre_S1PT, y = change_lordosis)) +
+# Plot 1: PT vs planned ΔLL (Model 1)
+png("planned_results/analysis14_PT_vs_planned_dLL.png", width = 10, height = 8, units = "in", res = 300)
+p1 <- ggplot(df_clean, aes(x = LATpre_S1PT, y = planned_DLL)) +
   geom_point(alpha = 0.6, color = "darkblue") +
   geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "solid") +
   labs(
     x = "Preoperative Pelvic Tilt (degrees)",
-    y = "Change in Lordosis (6-week - Preop, degrees)",
-    title = "Model 1: Pelvic Tilt vs Change in Lordosis"
+    y = "Planned ΔLL (preop PI–LL minus goal, degrees)",
+    title = "Model 1: Pelvic Tilt vs Planned ΔLL"
   ) +
   theme_minimal() +
   theme(
@@ -154,7 +167,7 @@ p1 <- ggplot(df_clean, aes(x = LATpre_S1PT, y = change_lordosis)) +
   ) +
   annotate(
     "text", x = Inf, y = Inf,
-    label = paste0("r = ", round(r_pt_lordosis, 3),
+    label = paste0("r = ", round(r_pt_outcome, 3),
                    "\nR² = ", round(summary1$r.squared, 3),
                    "\nCoefficient = ", round(summary1$coefficients[2, 1], 4),
                    "\np = ", formatC(summary1$coefficients[2, 4], format = "e", digits = 2),
@@ -164,10 +177,10 @@ p1 <- ggplot(df_clean, aes(x = LATpre_S1PT, y = change_lordosis)) +
 
 print(p1)
 dev.off()
-cat("Saved plot to results/analysis14_PT_vs_change_lordosis.png\n")
+cat("Saved plot to planned_results/analysis14_PT_vs_planned_dLL.png\n")
 
 # Plot 2: Residuals from PT model vs KF (showing what KF adds)
-png("results/analysis14_residuals_PT_vs_KF.png", width = 10, height = 8, units = "in", res = 300)
+png("planned_results/analysis14_residuals_PT_vs_KF_planned_dLL.png", width = 10, height = 8, units = "in", res = 300)
 
 # Calculate residuals from PT-only model
 df_clean$resid_from_PT <- residuals(model1)
@@ -183,8 +196,8 @@ p2 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_PT)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
   labs(
     x = "Preoperative Knee Flexion (degrees)",
-    y = "Residuals from PT Model\n(Change in Lordosis after removing effect of PT)",
-    title = "What Does KF Add?\n(Residuals from PT model vs KF)"
+    y = "Residuals from PT model\n(Planned ΔLL after removing effect of PT)",
+    title = "What Does KF Add?\n(Residuals from PT model vs KF, planned ΔLL)"
   ) +
   theme_minimal() +
   theme(
@@ -206,10 +219,10 @@ p2 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_PT)) +
 
 print(p2)
 dev.off()
-cat("Saved plot to results/analysis14_residuals_PT_vs_KF.png\n")
+cat("Saved plot to planned_results/analysis14_residuals_PT_vs_KF_planned_dLL.png\n")
 
 # Plot 3: Model comparison (coefficients with confidence intervals)
-png("results/analysis14_model_comparison.png", width = 12, height = 6, units = "in", res = 300)
+png("planned_results/analysis14_model_comparison_planned_dLL.png", width = 12, height = 6, units = "in", res = 300)
 
 comparison_df <- data.frame(
   Model = rep(c("Model 1 (PT only)", "Model 2 (PT + KF)"), each = 2),
@@ -270,10 +283,10 @@ p3 <- ggplot(pt_comparison, aes(x = Model, y = Coefficient)) +
 
 print(p3)
 dev.off()
-cat("Saved plot to results/analysis14_model_comparison.png\n")
+cat("Saved plot to planned_results/analysis14_model_comparison_planned_dLL.png\n")
 
 # Plot 4: R² comparison
-png("results/analysis14_R2_comparison.png", width = 10, height = 6, units = "in", res = 300)
+png("planned_results/analysis14_R2_comparison_planned_dLL.png", width = 10, height = 6, units = "in", res = 300)
 
 r2_df <- data.frame(
   Model = c("Model 1\n(PT only)", "Model 2\n(PT + KF)"),
@@ -307,7 +320,7 @@ p4 <- ggplot(r2_df, aes(x = Model)) +
 
 print(p4)
 dev.off()
-cat("Saved plot to results/analysis14_R2_comparison.png\n")
+cat("Saved plot to planned_results/analysis14_R2_comparison_planned_dLL.png\n")
 
 # ============================================================================
 # Summary
@@ -315,7 +328,7 @@ cat("Saved plot to results/analysis14_R2_comparison.png\n")
 cat("\n=== SUMMARY ===\n\n")
 
 cat("Model 1 (PT only):\n")
-cat(sprintf("  - Pelvic Tilt explains %.2f%% of variance in change in lordosis\n", summary1$r.squared * 100))
+cat(sprintf("  - Pelvic Tilt explains %.2f%% of variance in planned ΔLL\n", summary1$r.squared * 100))
 cat(sprintf("  - PT coefficient: %.4f (p = %.4e)\n", 
             summary1$coefficients[2, 1], summary1$coefficients[2, 4]))
 cat("\n")
@@ -351,4 +364,4 @@ if (anova_result$`Pr(>F)`[2] < 0.05) {
 cat("\n")
 
 cat("=== Analysis Complete ===\n")
-cat("Check the plots in results/ directory for visualizations.\n\n")
+cat("Check the plots in planned_results/ directory for visualizations.\n\n")

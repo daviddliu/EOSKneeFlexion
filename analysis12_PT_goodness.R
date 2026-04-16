@@ -224,8 +224,8 @@ create_plot <- function(data, pt_col, kf_col, kf_label, pt_label, title_suffix, 
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
   ggsave(filename, plot = p, width = 10, height = 8, dpi = 300)
   cat(sprintf("Saved plot to %s\n", filename))
@@ -307,8 +307,8 @@ create_plot_kf_vs_changePT <- function(data, kf_col, changePT_col, title_suffix,
   )
   
   # Save plot
-  if (!dir.exists("results")) {
-    dir.create("results")
+  if (!dir.exists("planned_results")) {
+    dir.create("planned_results")
   }
   ggsave(filename, plot = p, width = 10, height = 8, dpi = 300)
   cat(sprintf("Saved plot to %s\n", filename))
@@ -326,7 +326,7 @@ p0a <- create_plot(
   "Preoperative Knee Flexion",
   "Preoperative Pelvic Tilt",
   "(All patients)",
-  "results/analysis12_preop_PT_vs_preop_KF_all.png"
+  "planned_results/analysis12_preop_PT_vs_preop_KF_all.png"
 )
 
 cat("\nPlot 0b: Preop PT vs Preop KF (Preop PT < 20)\n")
@@ -337,7 +337,7 @@ p0b <- create_plot(
   "Preoperative Knee Flexion",
   "Preoperative Pelvic Tilt",
   "(Patients with Preop PT < 20°)",
-  "results/analysis12_preop_PT_vs_preop_KF_lt20.png"
+  "planned_results/analysis12_preop_PT_vs_preop_KF_lt20.png"
 )
 
 cat("\nPlot 0c: Preop PT vs Preop KF (Preop PT >= 20)\n")
@@ -348,7 +348,7 @@ p0c <- create_plot(
   "Preoperative Knee Flexion",
   "Preoperative Pelvic Tilt",
   "(Patients with Preop PT >= 20°)",
-  "results/analysis12_preop_PT_vs_preop_KF_ge20.png"
+  "planned_results/analysis12_preop_PT_vs_preop_KF_ge20.png"
 )
 
 # Create plots for all timepoints: KF vs PT (stratified by preop PT)
@@ -365,7 +365,7 @@ p2a <- create_plot(
   "Preoperative Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with Preop PT < 20°)",
-  "results/analysis12_6W_PT_vs_preop_KF_lt20.png"
+  "planned_results/analysis12_6W_PT_vs_preop_KF_lt20.png"
 )
 
 cat("\nPlot 2b: Preop KF vs 6-week PT (Preop PT >= 20)\n")
@@ -378,7 +378,7 @@ p2b <- create_plot(
   "Preoperative Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with Preop PT >= 20°)",
-  "results/analysis12_6W_PT_vs_preop_KF_ge20.png"
+  "planned_results/analysis12_6W_PT_vs_preop_KF_ge20.png"
 )
 
 # Preop KF vs 1-year PT (if available)
@@ -393,7 +393,7 @@ if ("LAT1Y_S1PT" %in% names(df)) {
     "Preoperative Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_1Y_PT_vs_preop_KF_lt20.png"
+    "planned_results/analysis12_1Y_PT_vs_preop_KF_lt20.png"
   )
   
   cat("\nPlot 3b: Preop KF vs 1-year PT (Preop PT >= 20)\n")
@@ -406,7 +406,7 @@ if ("LAT1Y_S1PT" %in% names(df)) {
     "Preoperative Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_1Y_PT_vs_preop_KF_ge20.png"
+    "planned_results/analysis12_1Y_PT_vs_preop_KF_ge20.png"
   )
 }
 
@@ -421,7 +421,7 @@ p4a <- create_plot(
   "6-Week Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with Preop PT < 20°)",
-  "results/analysis12_6W_PT_vs_6W_KF_lt20.png"
+  "planned_results/analysis12_6W_PT_vs_6W_KF_lt20.png"
 )
 
 cat("\nPlot 4b: 6-week KF vs 6-week PT (Preop PT >= 20)\n")
@@ -434,7 +434,7 @@ p4b <- create_plot(
   "6-Week Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with Preop PT >= 20°)",
-  "results/analysis12_6W_PT_vs_6W_KF_ge20.png"
+  "planned_results/analysis12_6W_PT_vs_6W_KF_ge20.png"
 )
 
 # 6-week KF vs 1-year PT (if available)
@@ -449,7 +449,7 @@ if ("LAT1Y_S1PT" %in% names(df)) {
     "6-Week Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_1Y_PT_vs_6W_KF_lt20.png"
+    "planned_results/analysis12_1Y_PT_vs_6W_KF_lt20.png"
   )
   
   cat("\nPlot 5b: 6-week KF vs 1-year PT (Preop PT >= 20)\n")
@@ -462,7 +462,7 @@ if ("LAT1Y_S1PT" %in% names(df)) {
     "6-Week Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_1Y_PT_vs_6W_KF_ge20.png"
+    "planned_results/analysis12_1Y_PT_vs_6W_KF_ge20.png"
   )
 }
 
@@ -478,7 +478,7 @@ if ("LAT1Y_LL_KneeAngle" %in% names(df) && "LAT1Y_S1PT" %in% names(df)) {
     "1-Year Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_1Y_PT_vs_1Y_KF_lt20.png"
+    "planned_results/analysis12_1Y_PT_vs_1Y_KF_lt20.png"
   )
   
   cat("\nPlot 6b: 1-year KF vs 1-year PT (Preop PT >= 20)\n")
@@ -491,7 +491,7 @@ if ("LAT1Y_LL_KneeAngle" %in% names(df) && "LAT1Y_S1PT" %in% names(df)) {
     "1-Year Knee Flexion",
     "Pelvic Tilt at 1 Year",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_1Y_PT_vs_1Y_KF_ge20.png"
+    "planned_results/analysis12_1Y_PT_vs_1Y_KF_ge20.png"
   )
 }
 
@@ -507,7 +507,7 @@ if ("LAT2Y_S1PT" %in% names(df)) {
     "Preoperative Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_2Y_PT_vs_preop_KF_lt20.png"
+    "planned_results/analysis12_2Y_PT_vs_preop_KF_lt20.png"
   )
   
   cat("\nPlot 7b: Preop KF vs 2-year PT (Preop PT >= 20)\n")
@@ -520,7 +520,7 @@ if ("LAT2Y_S1PT" %in% names(df)) {
     "Preoperative Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_2Y_PT_vs_preop_KF_ge20.png"
+    "planned_results/analysis12_2Y_PT_vs_preop_KF_ge20.png"
   )
 }
 
@@ -536,7 +536,7 @@ if ("LAT2Y_S1PT" %in% names(df)) {
     "6-Week Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_2Y_PT_vs_6W_KF_lt20.png"
+    "planned_results/analysis12_2Y_PT_vs_6W_KF_lt20.png"
   )
   
   cat("\nPlot 8b: 6-week KF vs 2-year PT (Preop PT >= 20)\n")
@@ -549,7 +549,7 @@ if ("LAT2Y_S1PT" %in% names(df)) {
     "6-Week Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_2Y_PT_vs_6W_KF_ge20.png"
+    "planned_results/analysis12_2Y_PT_vs_6W_KF_ge20.png"
   )
 }
 
@@ -565,7 +565,7 @@ if ("LAT1Y_LL_KneeAngle" %in% names(df) && "LAT2Y_S1PT" %in% names(df)) {
     "1-Year Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_2Y_PT_vs_1Y_KF_lt20.png"
+    "planned_results/analysis12_2Y_PT_vs_1Y_KF_lt20.png"
   )
   
   cat("\nPlot 9b: 1-year KF vs 2-year PT (Preop PT >= 20)\n")
@@ -578,7 +578,7 @@ if ("LAT1Y_LL_KneeAngle" %in% names(df) && "LAT2Y_S1PT" %in% names(df)) {
     "1-Year Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_2Y_PT_vs_1Y_KF_ge20.png"
+    "planned_results/analysis12_2Y_PT_vs_1Y_KF_ge20.png"
   )
 }
 
@@ -594,7 +594,7 @@ if ("LAT2Y_LL_KneeAngle" %in% names(df) && "LAT2Y_S1PT" %in% names(df)) {
     "2-Year Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT < 20°)",
-    "results/analysis12_2Y_PT_vs_2Y_KF_lt20.png"
+    "planned_results/analysis12_2Y_PT_vs_2Y_KF_lt20.png"
   )
   
   cat("\nPlot 10b: 2-year KF vs 2-year PT (Preop PT >= 20)\n")
@@ -607,7 +607,7 @@ if ("LAT2Y_LL_KneeAngle" %in% names(df) && "LAT2Y_S1PT" %in% names(df)) {
     "2-Year Knee Flexion",
     "Pelvic Tilt at 2 Years",
     "(Patients with Preop PT >= 20°)",
-    "results/analysis12_2Y_PT_vs_2Y_KF_ge20.png"
+    "planned_results/analysis12_2Y_PT_vs_2Y_KF_ge20.png"
   )
 }
 
@@ -619,7 +619,7 @@ p1a <- create_plot_kf_vs_changePT(
   "LATpre_LL_KneeAngle",
   "change_PT",
   "(All patients)",
-  "results/analysis12_preop_KF_vs_change_PT_all.png"
+  "planned_results/analysis12_preop_KF_vs_change_PT_all.png"
 )
 
 cat("\nPlot 1b: Preop KF vs Change in PT (Preop PT < 20)\n")
@@ -628,7 +628,7 @@ p1b <- create_plot_kf_vs_changePT(
   "LATpre_LL_KneeAngle",
   "change_PT",
   "(Patients with Preop PT < 20°)",
-  "results/analysis12_preop_KF_vs_change_PT_lt20.png"
+  "planned_results/analysis12_preop_KF_vs_change_PT_lt20.png"
 )
 
 cat("\nPlot 1c: Preop KF vs Change in PT (Preop PT >= 20)\n")
@@ -637,7 +637,7 @@ p1c <- create_plot_kf_vs_changePT(
   "LATpre_LL_KneeAngle",
   "change_PT",
   "(Patients with Preop PT >= 20°)",
-  "results/analysis12_preop_KF_vs_change_PT_ge20.png"
+  "planned_results/analysis12_preop_KF_vs_change_PT_ge20.png"
 )
 
 # Create plots for PT < 20 at 6 weeks (original analysis)
@@ -650,7 +650,7 @@ p7_old <- create_plot(
   "Preoperative Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with PT < 20° at 6 weeks)",
-  "results/analysis12_PT_vs_preop_KF_lt20_6W.png"
+  "planned_results/analysis12_PT_vs_preop_KF_lt20_6W.png"
 )
 
 cat("\nPlot 7: PT at 6 weeks vs 6-Week KF (PT < 20 at 6 weeks)\n")
@@ -661,7 +661,7 @@ p7 <- create_plot(
   "6-Week Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with PT < 20° at 6 weeks)",
-  "results/analysis12_PT_vs_6W_KF_lt20.png"
+  "planned_results/analysis12_PT_vs_6W_KF_lt20.png"
 )
 
 # Create plots for PT > 20 at 6 weeks
@@ -674,7 +674,7 @@ p8 <- create_plot(
   "Preoperative Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with PT > 20° at 6 weeks)",
-  "results/analysis12_PT_vs_preop_KF_gt20.png"
+  "planned_results/analysis12_PT_vs_preop_KF_gt20.png"
 )
 
 cat("\nPlot 9: PT at 6 weeks vs 6-Week KF (PT > 20 at 6 weeks)\n")
@@ -685,7 +685,7 @@ p9 <- create_plot(
   "6-Week Knee Flexion",
   "Pelvic Tilt at 6 Weeks",
   "(Patients with PT > 20° at 6 weeks)",
-  "results/analysis12_PT_vs_6W_KF_gt20.png"
+  "planned_results/analysis12_PT_vs_6W_KF_gt20.png"
 )
 
 # ============================================================================

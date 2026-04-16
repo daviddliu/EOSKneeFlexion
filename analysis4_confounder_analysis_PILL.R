@@ -21,14 +21,22 @@ EXCLUDE_LOW_VOLUME_SURGEONS <- FALSE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+df <- attach_planned_dll(df, db_path)
 
 # Filter out low-volume surgeons if enabled
 if (EXCLUDE_LOW_VOLUME_SURGEONS) {
   df <- filter_low_volume_surgeons(df, min_surgeon_cases = 10)
 }
 
-# Calculate change in PI-LL mismatch using 6-week data
-df$change_PI_LL <- df$LAT6W_PI_LL - df$LATpre_PI_LL
+df <- restrict_planned_dll_analysis_cohort(df)
+cat(sprintf(
+  "\nCohort restricted to |preop PI–LL| > %d° and preop SVA C2–C7 < %d (non-missing): n = %d rows\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT,
+  nrow(df)
+))
+
+# Outcome: Planned ΔLL (see utils/planned_pi_ll.R)
 
 # Check what preoperative PI-LL columns are available
 # Common names: LATpre_PI_LL, PI_LL_pre, etc.
@@ -75,11 +83,14 @@ if ("LATpre_L1PA" %in% names(df) && "LATpre_T4PA" %in% names(df)) {
 # A priori confounder set based on causal reasoning:
 # PI-LL mismatch, Preop Lordosis (L1-S1), L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
 df_clean <- df %>%
-  filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL) & !is.na(preop_PI_LL) &
-         !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) & 
-         !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA))
+  filter(
+    !is.na(LATpre_LL_KneeAngle) & !is.na(planned_DLL) & planned_DLL >= PLANNED_DLL_MIN_KEEP &
+      !is.na(preop_PI_LL) &
+      !is.na(LATpre_L1_S1) & !is.na(LATpre_L4_S1) & !is.na(LATpre_T2_T12) &
+      !is.na(LATpre_S1PT) & !is.na(LATpre_SVA_C2_S1) & !is.na(LATpre_T4_L1_PA)
+  )
 
-cat(paste("\nAnalysis includes", nrow(df_clean), "patients with complete data (using 6-week follow-up)\n"))
+cat(paste("\nAnalysis includes", nrow(df_clean), "patients with complete data (Planned \u0394LL outcome)\n"))
 cat("Variables included in full model (a priori confounder set):\n")
 cat("  - Preop Knee Flexion (LATpre_LL_KneeAngle)\n")
 cat("  - Preop PI-LL Mismatch (preop_PI_LL)\n")
@@ -89,13 +100,13 @@ cat("  - Preop Thoracic Kyphosis (LATpre_T2_T12)\n")
 cat("  - Preop S1PT - Pelvic Tilt (LATpre_S1PT)\n")
 cat("  - Preop SVA (LATpre_SVA_C2_S1)\n")
 cat("  - Preop T4-L1 PA (LATpre_T4_L1_PA = LATpre_L1PA - LATpre_T4PA)\n")
-cat("  - Change in PI-LL Mismatch (LAT6W_PI_LL - LATpre_PI_LL, 6-week follow-up)\n")
+cat("  - Planned \u0394LL (preop \u2212 planned PI\u2013LL goal; utils/planned_pi_ll.R)\n")
 
 # ============================================================================
-# ANALYSIS 1: Simple regression (preop knee flexion ~ change in PI-LL mismatch)
+# ANALYSIS 1: Simple regression (preop knee flexion ~ Planned \u0394LL)
 # ============================================================================
 cat("\n=== Model 1: Simple Regression (Preop Knee Flexion Only) ===\n")
-model1 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_clean)
+model1 <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_clean)
 summary1 <- summary(model1)
 cat("Coefficient for Preop Knee Flexion:\n")
 cat(sprintf("  Estimate: %.4f\n", summary1$coefficients[2, 1]))
@@ -109,7 +120,7 @@ cat(sprintf("  Adjusted R²: %.4f\n", summary1$adj.r.squared))
 cat("\n=== Model 2: Multiple Regression (A Priori Confounders) ===\n")
 cat("Adjusting for: Preop PI-LL Mismatch + Preop Lordosis (L1-S1) + Preop L4-S1 + Preop Thoracic Kyphosis + Preop S1PT + Preop SVA + Preop T4-L1 PA\n")
 cat("(Confounders selected a priori based on causal reasoning)\n")
-model2 <- lm(change_PI_LL ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
+model2 <- lm(planned_DLL ~ LATpre_LL_KneeAngle + preop_PI_LL + LATpre_L1_S1 + 
              LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = df_clean)
 summary2 <- summary(model2)
 
@@ -268,8 +279,8 @@ if (abs(change_percent) > 10 && pval2_kf > 0.05) {
 cat("\n=== Partial Correlation Analysis ===\n")
 
 # Zero-order correlation (unadjusted)
-r_kf_lordosis <- cor(df_clean$LATpre_LL_KneeAngle, df_clean$change_PI_LL, use = "complete.obs")
-r_pill_lordosis <- cor(df_clean$preop_PI_LL, df_clean$change_PI_LL, use = "complete.obs")
+r_kf_lordosis <- cor(df_clean$LATpre_LL_KneeAngle, df_clean$planned_DLL, use = "complete.obs")
+r_pill_lordosis <- cor(df_clean$preop_PI_LL, df_clean$planned_DLL, use = "complete.obs")
 r_kf_pill <- cor(df_clean$LATpre_LL_KneeAngle, df_clean$preop_PI_LL, use = "complete.obs")
 
 cat(sprintf("Zero-order correlations:\n"))
@@ -278,12 +289,12 @@ cat(sprintf("  PI-LL Mismatch ~ Change in PI-LL Mismatch: r = %.4f\n", r_pill_lo
 cat(sprintf("  Knee Flexion ~ PI-LL Mismatch: r = %.4f\n", r_kf_pill))
 
 # Calculate correlations with all included variables
-r_l1s1_lordosis <- cor(df_clean$LATpre_L1_S1, df_clean$change_PI_LL, use = "complete.obs")
-r_l4s1_lordosis <- cor(df_clean$LATpre_L4_S1, df_clean$change_PI_LL, use = "complete.obs")
-r_t2t12_lordosis <- cor(df_clean$LATpre_T2_T12, df_clean$change_PI_LL, use = "complete.obs")
-r_s1pt_lordosis <- cor(df_clean$LATpre_S1PT, df_clean$change_PI_LL, use = "complete.obs")
-r_sva_lordosis <- cor(df_clean$LATpre_SVA_C2_S1, df_clean$change_PI_LL, use = "complete.obs")
-r_t4l1pa_lordosis <- cor(df_clean$LATpre_T4_L1_PA, df_clean$change_PI_LL, use = "complete.obs")
+r_l1s1_lordosis <- cor(df_clean$LATpre_L1_S1, df_clean$planned_DLL, use = "complete.obs")
+r_l4s1_lordosis <- cor(df_clean$LATpre_L4_S1, df_clean$planned_DLL, use = "complete.obs")
+r_t2t12_lordosis <- cor(df_clean$LATpre_T2_T12, df_clean$planned_DLL, use = "complete.obs")
+r_s1pt_lordosis <- cor(df_clean$LATpre_S1PT, df_clean$planned_DLL, use = "complete.obs")
+r_sva_lordosis <- cor(df_clean$LATpre_SVA_C2_S1, df_clean$planned_DLL, use = "complete.obs")
+r_t4l1pa_lordosis <- cor(df_clean$LATpre_T4_L1_PA, df_clean$planned_DLL, use = "complete.obs")
 
 cat(sprintf("  Preop Lordosis L1-S1 ~ Change in PI-LL Mismatch: r = %.4f\n", r_l1s1_lordosis))
 cat(sprintf("  Preop L4-S1 ~ Change in PI-LL Mismatch: r = %.4f\n", r_l4s1_lordosis))
@@ -302,7 +313,7 @@ r_partial <- t_stat_kf / sqrt(t_stat_kf^2 + df_residual)
 
 # Partial R² = R² change when adding knee flexion to model (standard definition)
 # This is the increase in R² from model without KF to model with KF
-model_no_kf <- lm(change_PI_LL ~ preop_PI_LL + LATpre_L1_S1 + 
+model_no_kf <- lm(planned_DLL ~ preop_PI_LL + LATpre_L1_S1 + 
                   LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, 
                   data = df_clean)
 summary_no_kf <- summary(model_no_kf)
@@ -324,18 +335,16 @@ if (abs(r_partial) < abs(r_kf_lordosis) * 0.7) {
 # ============================================================================
 # VISUALIZATION: Create plots
 # ============================================================================
-if (!dir.exists("results")) {
-  dir.create("results")
-}
+pr_dir <- ensure_planned_results_dir()
 
 # Plot 1: Unadjusted relationship
-p1 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = change_PI_LL)) +
+p1 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = planned_DLL)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = TRUE, color = "red") +
   labs(
-    x = "Preoperative Knee Flexion",
-    y = "Change in PI-LL Mismatch (6-week)",
-    title = "Model 1: Unadjusted\n(Preop Knee Flexion Only, 6-week follow-up)"
+    x = "Preoperative Knee Flexion (°)",
+    y = "Planned \u0394LL (\u00b0)",
+    title = "Model 1: Unadjusted\n(Preop Knee Flexion Only)"
   ) +
   theme_minimal() +
   theme(
@@ -351,13 +360,13 @@ p1 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = change_PI_LL)) +
     hjust = 1.1, vjust = 1.5, size = 3.5, fontface = "bold"
   )
 
-ggsave("results/analysis4_PILL_unadjusted.png", plot = p1, width = 8, height = 6, dpi = 300)
-cat("\nSaved unadjusted plot to results/analysis4_PILL_unadjusted.png\n")
+ggsave(file.path(pr_dir, "analysis4_PILL_unadjusted.png"), plot = p1, width = 8, height = 6, dpi = 300)
+cat("\nSaved unadjusted plot to planned_results/analysis4_PILL_unadjusted.png\n")
 
 # Plot 2: Residuals from full model (excluding knee flexion) vs Knee Flexion
 # This shows the relationship between knee flexion and lordosis AFTER removing effects of all other covariates
 # Using a priori confounder set: PI-LL, Lordosis L1-S1, L4-S1, Thoracic Kyphosis, S1PT, SVA, T4-L1 PA
-covariates_model <- lm(change_PI_LL ~ preop_PI_LL + LATpre_L1_S1 + 
+covariates_model <- lm(planned_DLL ~ preop_PI_LL + LATpre_L1_S1 + 
                        LATpre_L4_S1 + LATpre_T2_T12 + LATpre_S1PT + LATpre_SVA_C2_S1 + LATpre_T4_L1_PA, data = df_clean)
 df_clean$resid_from_covariates <- residuals(covariates_model)
 
@@ -369,9 +378,9 @@ p2 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_covariates)) 
   geom_smooth(method = "lm", se = TRUE, color = "blue") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
   labs(
-    x = "Preoperative Knee Flexion",
-    y = "Residuals from Covariates Model\n(Change in PI-LL Mismatch after removing\neffects of PI-LL, Lordosis L1-S1, L4-S1,\nThoracic Kyphosis, S1PT, SVA, T4-L1 PA)",
-    title = "Model 2: Adjusted Relationship (6-week follow-up)\n(Knee Flexion ~ Residuals after controlling for all covariates)"
+    x = "Preoperative Knee Flexion (°)",
+    y = "Residuals in planned ∆LL (°) from covariates model)",
+    title = "Residual relationship in knee flexion with planned ∆LL: \n Variance subtracted from multilinear model)"
   ) +
   theme_minimal() +
   theme(
@@ -388,8 +397,8 @@ p2 <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = resid_from_covariates)) 
     hjust = 1.1, vjust = 1.5, size = 3.5, fontface = "bold"
   )
 
-ggsave("results/analysis4_PILL_adjusted.png", plot = p2, width = 8, height = 6, dpi = 300)
-cat("Saved adjusted (residual) plot to results/analysis4_PILL_adjusted.png\n")
+ggsave(file.path(pr_dir, "analysis4_PILL_adjusted.png"), plot = p2, width = 8, height = 6, dpi = 300)
+cat("Saved adjusted (residual) plot to planned_results/analysis4_PILL_adjusted.png\n")
 
 # Plot 3: Comparison of coefficients
 coef_df <- data.frame(
@@ -407,7 +416,7 @@ p3 <- ggplot(coef_df, aes(x = Model, y = Coefficient)) +
   labs(
     x = "Model",
     y = "Coefficient for Preop Knee Flexion",
-    title = "Comparison: Unadjusted vs Adjusted Coefficient (6-week follow-up)"
+    title = "Comparison: Unadjusted vs Adjusted Coefficient (Planned \u0394LL)"
   ) +
   theme_minimal() +
   theme(
@@ -421,8 +430,8 @@ p3 <- ggplot(coef_df, aes(x = Model, y = Coefficient)) +
     vjust = -1.5, size = 3
   )
 
-ggsave("results/analysis4_PILL_coefficient_comparison.png", plot = p3, width = 8, height = 6, dpi = 300)
-cat("Saved coefficient comparison plot to results/analysis4_PILL_coefficient_comparison.png\n")
+ggsave(file.path(pr_dir, "analysis4_PILL_coefficient_comparison.png"), plot = p3, width = 8, height = 6, dpi = 300)
+cat("Saved coefficient comparison plot to planned_results/analysis4_PILL_coefficient_comparison.png\n")
 
 cat("\n=== Analysis Complete ===\n")
 cat("Check the plots and statistics above to evaluate if PI-LL mismatch is a confounder (using 6-week follow-up data).\n")

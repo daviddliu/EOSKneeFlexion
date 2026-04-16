@@ -17,35 +17,41 @@ EXCLUDE_PJK <- TRUE
 # Load database
 db_path <- "/Users/ddliu/Desktop/ISSG/Retrospective_projects/Databases/CADS database - 2025.10.10.xlsx"
 df <- load_combine_data(db_path, exclude_pjk = EXCLUDE_PJK)
+df <- attach_planned_dll(df, db_path)
+df <- restrict_planned_dll_analysis_cohort(df)
 
-# Calculate change in PI-LL mismatch
-# Note: If either LAT1Y_PI_LL or LATpre_PI_LL is missing, change_PI_LL will be NA
-df$change_PI_LL <- df$LAT1Y_PI_LL - df$LATpre_PI_LL
-
-# Drop patients with missing data (listwise deletion)
-# Patients with missing LATpre_LL_KneeAngle or change_PI_LL are excluded from analysis
+# Outcome: Planned ΔLL (preop − planned PI–LL goal)
 df_clean <- df %>%
-  filter(!is.na(LATpre_LL_KneeAngle) & !is.na(change_PI_LL))
+  filter(
+    !is.na(LATpre_LL_KneeAngle),
+    !is.na(planned_DLL),
+    planned_DLL >= PLANNED_DLL_MIN_KEEP
+  )
 
-cat(paste("Analysis includes", nrow(df_clean), "patients (dropped", nrow(df) - nrow(df_clean), "patients with missing data)\n"))
+cat(sprintf(
+  "Cohort: |preop PI–LL| > %d°, preop SVA C2–C7 < %d (non-missing)\n",
+  PREOP_ABS_PI_LL_GT,
+  PREOP_SVA_C2_C7_LT
+))
+cat(paste("Analysis includes", nrow(df_clean), "patients (dropped", nrow(df) - nrow(df_clean), "patients with missing KF / planned goal / truncation)\n"))
 
 # Perform linear regression
-model <- lm(change_PI_LL ~ LATpre_LL_KneeAngle, data = df_clean)
+model <- lm(planned_DLL ~ LATpre_LL_KneeAngle, data = df_clean)
 summary_model <- summary(model)
 r_squared <- summary_model$r.squared
 p_value <- summary_model$coefficients[2, 4]
 
 # Calculate Pearson correlation coefficient
-pearson_r <- cor(df_clean$LATpre_LL_KneeAngle, df_clean$change_PI_LL, use = "complete.obs")
+pearson_r <- cor(df_clean$LATpre_LL_KneeAngle, df_clean$planned_DLL, use = "complete.obs")
 
 # Create scatter plot with regression line
-p <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = change_PI_LL)) +
+p <- ggplot(df_clean, aes(x = LATpre_LL_KneeAngle, y = planned_DLL)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "solid") +
   labs(
-    x = "Preoperative Knee Flexion (LATpre_LL_KneeAngle)",
-    y = "Change in PI-LL Mismatch (LAT1Y_PI_LL - LATpre_PI_LL)",
-    title = "Preoperative Knee Flexion vs Change in PI-LL Mismatch"
+    x = "Preoperative Knee Flexion (°)",
+    y = "Planned \u0394LL (\u00b0)",
+    title = "Preoperative Knee Flexion vs Planned \u0394LL"
   ) +
   theme_minimal() +
   theme(
@@ -69,10 +75,12 @@ p <- p + annotate(
   fontface = "bold"
 )
 
-# Save plot
-if (!dir.exists("results")) {
-  dir.create("results")
-}
-ggsave("results/analysis1_kf_correction_PILL.png", plot = p, width = 10, height = 8, dpi = 300)
-cat("Saved plot to results/analysis1_kf_correction_PILL.png\n")
-
+pr_dir <- ensure_planned_results_dir()
+ggsave(
+  file.path(pr_dir, "analysis1_kf_correction_PILL.png"),
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+cat("Saved plot to planned_results/analysis1_kf_correction_PILL.png\n")

@@ -273,12 +273,12 @@ cat("\n")
 # ============================================================================
 cat("=== Creating Visualizations ===\n\n")
 
-if (!dir.exists("results")) {
-  dir.create("results")
+if (!dir.exists("planned_results")) {
+  dir.create("planned_results")
 }
 
 # Plot 1: R² change (partial R²) for each parameter
-png("results/analysis7_r2_contribution.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_r2_contribution.png", width = 12, height = 8, units = "in", res = 300)
 p1 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change), y = R2_Change)) +
   geom_bar(stat = "identity", fill = "steelblue", alpha = 0.7) +
   coord_flip() +
@@ -299,10 +299,10 @@ p1 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change), y = R2_Change)) 
 
 print(p1)
 dev.off()
-cat("Saved R² contribution plot to results/analysis7_r2_contribution.png\n")
+cat("Saved R² contribution plot to planned_results/analysis7_r2_contribution.png\n")
 
 # Plot 2: R² change as percentage of total variance (0-100%)
-png("results/analysis7_r2_contribution_pct.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_r2_contribution_pct.png", width = 12, height = 8, units = "in", res = 300)
 p2 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change_Pct_Of_Total), y = R2_Change_Pct_Of_Total)) +
   geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.7) +
   coord_flip() +
@@ -323,10 +323,10 @@ p2 <- ggplot(results_df, aes(x = reorder(Parameter, R2_Change_Pct_Of_Total), y =
 
 print(p2)
 dev.off()
-cat("Saved R² contribution percentage plot to results/analysis7_r2_contribution_pct.png\n")
+cat("Saved R² contribution percentage plot to planned_results/analysis7_r2_contribution_pct.png\n")
 
 # Plot 3: Effect on knee flexion coefficient
-png("results/analysis7_kf_coefficient_change.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_kf_coefficient_change.png", width = 12, height = 8, units = "in", res = 300)
 p3 <- ggplot(results_df, aes(x = reorder(Parameter, abs(KF_Coefficient_Change_Pct)), 
                              y = KF_Coefficient_Change_Pct)) +
   geom_bar(stat = "identity", fill = "coral", alpha = 0.7) +
@@ -350,10 +350,10 @@ p3 <- ggplot(results_df, aes(x = reorder(Parameter, abs(KF_Coefficient_Change_Pc
 
 print(p3)
 dev.off()
-cat("Saved knee flexion coefficient change plot to results/analysis7_kf_coefficient_change.png\n")
+cat("Saved knee flexion coefficient change plot to planned_results/analysis7_kf_coefficient_change.png\n")
 
 # Plot 4: Partial correlation coefficients
-png("results/analysis7_partial_correlations.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_partial_correlations.png", width = 12, height = 8, units = "in", res = 300)
 p4 <- ggplot(results_df, aes(x = reorder(Parameter, abs(Partial_R)), y = Partial_R)) +
   geom_bar(stat = "identity", fill = "purple", alpha = 0.7) +
   coord_flip() +
@@ -376,10 +376,10 @@ p4 <- ggplot(results_df, aes(x = reorder(Parameter, abs(Partial_R)), y = Partial
 
 print(p4)
 dev.off()
-cat("Saved partial correlations plot to results/analysis7_partial_correlations.png\n")
+cat("Saved partial correlations plot to planned_results/analysis7_partial_correlations.png\n")
 
 # Plot 5: Combined visualization - R² change vs effect on KF coefficient
-png("results/analysis7_combined_importance.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_combined_importance.png", width = 12, height = 8, units = "in", res = 300)
 p5 <- ggplot(results_df, aes(x = R2_Change, y = abs(KF_Coefficient_Change_Pct), 
                              label = Parameter, color = Type)) +
   geom_point(size = 4, alpha = 0.7) +
@@ -400,10 +400,10 @@ p5 <- ggplot(results_df, aes(x = R2_Change, y = abs(KF_Coefficient_Change_Pct),
 
 print(p5)
 dev.off()
-cat("Saved combined importance plot to results/analysis7_combined_importance.png\n")
+cat("Saved combined importance plot to planned_results/analysis7_combined_importance.png\n")
 
 # Plot 6: Knee flexion p-value change
-png("results/analysis7_kf_pvalue_change.png", width = 12, height = 8, units = "in", res = 300)
+png("planned_results/analysis7_kf_pvalue_change.png", width = 12, height = 8, units = "in", res = 300)
 results_df$KF_P_Change <- results_df$KF_P_With_Param - results_df$KF_P_Base
 results_df$KF_Significance_Change <- factor(
   ifelse(results_df$KF_Significant_Base & !results_df$KF_Significant_With_Param, "Made Non-Sig",
@@ -440,7 +440,7 @@ p6 <- ggplot(results_df, aes(x = reorder(Parameter, KF_P_Change), y = -log10(KF_
 
 print(p6)
 dev.off()
-cat("Saved knee flexion p-value change plot to results/analysis7_kf_pvalue_change.png\n")
+cat("Saved knee flexion p-value change plot to planned_results/analysis7_kf_pvalue_change.png\n")
 
 # ============================================================================
 # Summary statistics
@@ -489,8 +489,8 @@ if (nrow(large_effect) > 0) {
 cat("\n")
 
 # Save results table
-write.csv(results_df, "results/analysis7_individual_parameter_results.csv", row.names = FALSE)
-cat("Saved detailed results table to results/analysis7_individual_parameter_results.csv\n")
+write.csv(results_df, "planned_results/analysis7_individual_parameter_results.csv", row.names = FALSE)
+cat("Saved detailed results table to planned_results/analysis7_individual_parameter_results.csv\n")
 
 # ============================================================================
 # PROOF: Is Knee Flexion a Confounder?
@@ -602,5 +602,5 @@ cat(rep("=", 80), "\n\n")
 cat("\n=== Analysis Complete ===\n")
 cat("This analysis shows how much variance each individual preop parameter explains\n")
 cat("in the preop knee flexion vs change in lumbar lordosis relationship.\n")
-cat("Check the plots in results/ directory for visualizations.\n\n")
+cat("Check the plots in planned_results/ directory for visualizations.\n\n")
 
